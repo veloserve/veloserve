@@ -1,0 +1,67 @@
+# Ona Configuration for VeloServe
+# Open in Ona: https://ona.com/#https://github.com/veloserve/veloserve
+
+image:
+  file: .gitpod.Dockerfile
+
+tasks:
+  - name: Setup & Build
+    init: |
+      # Install PHP extensions
+      sudo apt-get update
+      sudo apt-get install -y php-mysql php-curl php-gd php-mbstring \
+          php-xml php-zip php-intl php-bcmath php-soap php-opcache
+      
+      # Build VeloServe
+      cargo build
+      
+      # Setup test files
+      mkdir -p /var/www/html
+      cp -r examples/www/* /var/www/html/
+    command: |
+      echo ""
+      echo "✅ VeloServe is ready!"
+      echo ""
+      echo "🚀 Start the server:"
+      echo "   make run"
+      echo ""
+      echo "📋 Or run directly:"
+      echo "   cargo run -- --config veloserve.toml"
+      echo ""
+
+  - name: Server
+    command: |
+      # Wait for build to complete
+      echo "Starting VeloServe..."
+      sleep 5
+      RUST_LOG=info cargo run -- --config veloserve.toml
+
+ports:
+  - port: 8080
+    onOpen: notify
+    visibility: public
+    name: VeloServe HTTP
+    description: VeloServe Web Server
+
+  - port: 443
+    onOpen: ignore
+    visibility: private
+    name: VeloServe HTTPS
+
+vscode:
+  extensions:
+    - rust-lang.rust-analyzer
+    - tamasfe.even-better-toml
+    - serayuzgur.crates
+    - bmewburn.vscode-intelephense-client
+
+github:
+  prebuilds:
+    master: true
+    branches: true
+    pullRequests: true
+    pullRequestsFromForks: false
+    addCheck: true
+    addComment: false
+    addBadge: true
+

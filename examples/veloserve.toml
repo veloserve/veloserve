@@ -1,0 +1,131 @@
+# VeloServe Example Configuration
+# Copy this to /etc/veloserve/veloserve.toml
+
+[server]
+# HTTP listen address
+listen = "0.0.0.0:8080"
+
+# HTTPS listen address (optional)
+# listen_ssl = "0.0.0.0:443"
+
+# Number of worker threads ("auto" = CPU count)
+workers = "auto"
+
+# Maximum concurrent connections
+max_connections = 10000
+
+# Keep-alive timeout in seconds
+keepalive_timeout = 75
+
+# Request timeout in seconds
+request_timeout = 60
+
+# Maximum request body size
+max_body_size = "100M"
+
+[php]
+# Enable PHP support
+enable = true
+
+# PHP version (for auto-detection if binary_path not set)
+version = "8.3"
+
+# Path to PHP binary (required for most setups)
+binary_path = "/usr/bin/php"
+
+# Number of PHP worker processes
+workers = 16
+
+# PHP memory limit
+memory_limit = "256M"
+
+# Maximum execution time in seconds
+max_execution_time = 30
+
+# Additional PHP ini settings (recommended)
+ini_settings = [
+    "opcache.enable=1",
+    "opcache.memory_consumption=128",
+    "opcache.max_accelerated_files=10000",
+    "opcache.revalidate_freq=2"
+]
+
+# ============================================
+# PHP Extensions Required for Common CMS
+# ============================================
+# WordPress: php-mysql php-curl php-gd php-mbstring php-xml php-zip php-intl
+# Magento 2: php-bcmath php-curl php-gd php-intl php-mbstring php-mysql php-soap php-xml php-zip
+#
+# Install on Ubuntu/Debian:
+#   sudo apt install php php-cli php-mysql php-curl php-gd php-mbstring \
+#       php-xml php-zip php-intl php-bcmath php-soap php-opcache
+#
+# See docs/PHP_EXTENSIONS.md for full documentation
+
+[cache]
+# Enable caching
+enable = true
+
+# Storage backend: memory, disk, redis
+storage = "memory"
+
+# Memory limit for cache
+memory_limit = "512M"
+
+# Default TTL in seconds
+default_ttl = 3600
+
+# Redis URL (if using Redis backend)
+# redis_url = "redis://localhost:6379"
+
+# Disk cache path
+disk_path = "/var/cache/veloserve"
+
+# [ssl]
+# # SSL certificate
+# cert = "/etc/veloserve/ssl/cert.pem"
+#
+# # SSL private key
+# key = "/etc/veloserve/ssl/key.pem"
+#
+# # Enabled TLS protocols
+# protocols = ["TLSv1.2", "TLSv1.3"]
+#
+# # Enable OCSP stapling
+# ocsp_stapling = true
+
+# Virtual Host Example: WordPress
+[[virtualhost]]
+domain = "wordpress.example.com"
+root = "/var/www/wordpress"
+platform = "wordpress"
+index = ["index.php", "index.html"]
+
+[virtualhost.cache]
+enable = true
+ttl = 7200
+vary = ["Accept-Encoding", "Cookie"]
+exclude = ["/wp-admin/*", "/wp-login.php", "/cart/*", "/checkout/*"]
+
+# Virtual Host Example: Magento 2
+# [[virtualhost]]
+# domain = "magento.example.com"
+# root = "/var/www/magento/pub"
+# platform = "magento2"
+# index = ["index.php"]
+#
+# [virtualhost.cache]
+# enable = true
+# ttl = 3600
+# vary = ["Accept-Encoding", "X-Magento-Vary"]
+
+# Virtual Host Example: Static site
+# [[virtualhost]]
+# domain = "static.example.com"
+# root = "/var/www/static"
+# index = ["index.html"]
+#
+# [virtualhost.cache]
+# enable = true
+# ttl = 86400
+

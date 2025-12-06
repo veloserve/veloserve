@@ -1,0 +1,53 @@
+{
+  "name": "VeloServe Development",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-1-bullseye",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/php:1": {
+      "version": "8.3",
+      "installComposer": true
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "forwardPorts": [8080, 443],
+  
+  "portsAttributes": {
+    "8080": {
+      "label": "VeloServe HTTP",
+      "onAutoForward": "notify"
+    },
+    "443": {
+      "label": "VeloServe HTTPS",
+      "onAutoForward": "ignore"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "bmewburn.vscode-intelephense-client",
+        "devsense.phptools-vscode"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      }
+    }
+  },
+
+  "remoteUser": "vscode"
+}
+

@@ -1,0 +1,30 @@
+# VeloServe Local Development Configuration
+
+[server]
+listen = "0.0.0.0:8080"
+workers = "auto"
+max_connections = 1000
+
+[php]
+enable = true
+version = "8.3"
+binary_path = "/usr/bin/php"
+workers = 4
+memory_limit = "256M"
+max_execution_time = 30
+
+[cache]
+enable = true
+storage = "memory"
+memory_limit = "256M"
+default_ttl = 60
+
+# Local development virtual host
+[[virtualhost]]
+domain = "*"
+root = "/workspaces/workspaces/veloserve/examples/www"
+index = ["index.html", "index.php"]
+
+[virtualhost.cache]
+enable = false
+
