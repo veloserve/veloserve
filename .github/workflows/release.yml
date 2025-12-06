@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            cross: true
+          
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cargo install cross
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+        shell: bash
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czvf ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}.tar.gz veloserve
+        shell: bash
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}.zip veloserve.exe
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veloserve-${{ matrix.target }}
+          path: veloserve-${{ github.ref_name }}-${{ matrix.target }}.*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          body: |
+            ## 🚀 VeloServe ${{ github.ref_name }}
+            
+            ### Installation
+            
+            **One-liner (Linux/macOS):**
+            ```bash
+            curl -sSL https://raw.githubusercontent.com/veloserve/veloserve/main/scripts/install.sh | bash
+            ```
+            
+            **Or download binary directly:**
+            
+            | Platform | Download |
+            |----------|----------|
+            | Linux x86_64 | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz) |
+            | Linux ARM64 | [veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz) |
+            | macOS x86_64 | [veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz) |
+            | macOS ARM64 | [veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz) |
+            | Windows x86_64 | [veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip) |
+            
+            ### Quick Start
+            
+            ```bash
+            # After installation
+            veloserve --help
+            
+            # Start server
+            veloserve --config /etc/veloserve/veloserve.toml
+            ```
+            
+            📖 **Documentation:** https://veloserve.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

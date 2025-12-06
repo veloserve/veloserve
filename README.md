@@ -16,6 +16,32 @@ A high-performance web server designed as a modern alternative to LiteSpeed/Ngin
 
 ---
 
+## 🚀 Quick Install (One Command!)
+
+```bash
+curl -sSL https://veloserve.io/install.sh | bash
+```
+
+**Or using wget:**
+```bash
+wget -qO- https://veloserve.io/install.sh | bash
+```
+
+**Then start serving:**
+```bash
+# Quick test
+mkdir -p /tmp/www && echo '<?php phpinfo();' > /tmp/www/index.php
+veloserve start --root /tmp/www --listen 0.0.0.0:8080
+
+# Visit http://localhost:8080
+```
+
+> 📦 **Pre-built binaries available for:** Linux (x64, ARM64), macOS (x64, Apple Silicon), Windows
+> 
+> 🔧 **No Rust installation required!** The installer downloads the right binary for your system.
+
+---
+
 ## ⚡ Quick Start (Cloud Development)
 
 **No local setup required!** Start developing instantly in your browser with **Ona.com** or **GitHub Codespaces**.
