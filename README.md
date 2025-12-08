@@ -42,6 +42,68 @@ veloserve start --root /tmp/www --listen 0.0.0.0:8080
 
 ---
 
+## 📥 Quick Run with Pre-built Binaries
+
+Don't want to compile? Download a pre-built binary for your platform:
+
+### Download Links
+
+| Platform | Architecture | Download | Notes |
+|----------|--------------|----------|-------|
+| **Linux** | x86_64 | [veloserve-linux-x86_64.tar.gz](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu.tar.gz) | Standard build (PHP-CGI) |
+| **Linux** | x86_64 | [veloserve-linux-x86_64-php-embed.tar.gz](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu-php-embed.tar.gz) | **High-performance PHP SAPI** |
+| **Linux** | ARM64 | [veloserve-linux-arm64.tar.gz](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-aarch64-unknown-linux-gnu.tar.gz) | Raspberry Pi, AWS Graviton |
+| **macOS** | Intel | [veloserve-macos-x86_64.tar.gz](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-apple-darwin.tar.gz) | Intel Macs |
+| **macOS** | Apple Silicon | [veloserve-macos-arm64.tar.gz](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-aarch64-apple-darwin.tar.gz) | M1/M2/M3 Macs |
+| **Windows** | x86_64 | [veloserve-windows-x86_64.zip](https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-pc-windows-msvc.zip) | Windows 10/11 |
+
+### Quick Start by Platform
+
+**Linux / macOS:**
+```bash
+# Download and extract (example for Linux x86_64)
+curl -LO https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf veloserve-latest-x86_64-unknown-linux-gnu.tar.gz
+
+# Make executable and run
+chmod +x veloserve
+./veloserve --help
+
+# Start serving a directory
+./veloserve start --root /var/www/html --listen 0.0.0.0:8080
+```
+
+**Windows (PowerShell):**
+```powershell
+# Download
+Invoke-WebRequest -Uri "https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-pc-windows-msvc.zip" -OutFile "veloserve.zip"
+
+# Extract
+Expand-Archive -Path "veloserve.zip" -DestinationPath "."
+
+# Run
+.\veloserve.exe --help
+.\veloserve.exe start --root C:\www --listen 0.0.0.0:8080
+```
+
+### PHP Embed vs Standard Build
+
+| Build | Use Case | Requirements |
+|-------|----------|--------------|
+| **Standard** | Development, simple sites | `php-cgi` installed |
+| **PHP Embed** | Production, WordPress, high-traffic | `libphp-embed` installed |
+
+For PHP Embed builds, install the PHP embed library:
+```bash
+# Ubuntu/Debian
+sudo apt install libphp-embed
+
+# Then run with embed mode
+./veloserve --config mysite.toml  # Set mode = "embed" in config
+```
+
+---
+
 ## ⚡ Quick Start (Cloud Development)
 
 **No local setup required!** Start developing instantly in your browser with **Ona.com** or **GitHub Codespaces**.
@@ -311,13 +373,13 @@ cargo build --release --features php-embed
 
 ### 1. Integrated PHP Engine
 
-- **CGI Mode** (current): Process pool with `php-cgi` - works everywhere
-- **SAPI Mode** (planned): Embedded `libphp` via FFI - maximum performance
+- **CGI Mode**: Process pool with `php-cgi` - works everywhere, easy setup
+- **SAPI Mode** ✅: Embedded `libphp` via FFI - **10-100x faster**, now working!
 - No PHP-FPM required - direct process integration
-- Thread-safe or process-pool architecture
+- Thread-safe execution with dedicated PHP worker thread
 - Support for PHP 7.4, 8.0, 8.1, 8.2, 8.3+
-- Configurable worker pools per virtual host
-- Automatic PHP version detection per site
+- Full WordPress support including admin dashboard, sessions, and cookies
+- Configurable error logging with dedicated `error_log` option
 
 ### 2. Built-in Caching System
 
@@ -662,10 +724,12 @@ docker run -d -p 80:80 -p 443:443 \
 
 ### Phase 1: MVP (Current) ✅
 - [x] Core HTTP server (HTTP/1.1, HTTP/2)
-- [x] Integrated PHP support (single version)
+- [x] Integrated PHP support (CGI mode)
+- [x] PHP Embed SAPI mode (high-performance)
+- [x] WordPress full support (login, dashboard, sessions)
+- [x] Configuration system (TOML)
+- [x] PHP error logging configuration
 - [ ] Basic page caching
-- [ ] WordPress detection and caching
-- [ ] Configuration system
 - [ ] Basic CLI tools
 
 ### Phase 2: Enhanced Caching

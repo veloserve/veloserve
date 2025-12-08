@@ -35,6 +35,7 @@
                 <a href="#features">Features</a>
                 <a href="#performance">Performance</a>
                 <a href="#install">Install</a>
+                <a href="#downloads">Downloads</a>
                 <a href="https://github.com/veloserve/veloserve/tree/main/docs" class="nav-link">Docs</a>
                 <a href="https://github.com/veloserve/veloserve" class="nav-github" target="_blank">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -175,7 +176,7 @@
                 </div>
                 
                 <div class="mode-card featured">
-                    <div class="mode-badge">Recommended</div>
+                    <div class="mode-badge">✅ Working</div>
                     <div class="mode-icon">🚀</div>
                     <h3>SAPI Mode</h3>
                     <p class="mode-tagline">Maximum Performance</p>
@@ -188,8 +189,8 @@
                     <ul class="mode-features">
                         <li>🚀 10-100x faster</li>
                         <li>🚀 ~1ms latency</li>
-                        <li>🚀 Single binary</li>
-                        <li>🚀 Zero overhead</li>
+                        <li>🚀 WordPress ready</li>
+                        <li>🚀 Full session support</li>
                     </ul>
                     <div class="mode-code">
                         <code>cargo build --release --features php-embed</code>
@@ -372,6 +373,66 @@ cargo build --release</code></pre>
         </div>
     </section>
 
+    <!-- Downloads Section -->
+    <section id="downloads" class="downloads">
+        <div class="container">
+            <h2 class="section-title">Download Pre-built Binaries</h2>
+            <p class="section-subtitle">No compilation needed — just download and run</p>
+            
+            <div class="download-grid">
+                <div class="download-card">
+                    <div class="download-icon">🐧</div>
+                    <h3>Linux</h3>
+                    <div class="download-links">
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu.tar.gz" class="download-link">
+                            <span>x86_64 (Standard)</span>
+                            <span class="download-size">~3MB</span>
+                        </a>
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu-php-embed.tar.gz" class="download-link featured">
+                            <span>x86_64 (PHP Embed) 🚀</span>
+                            <span class="download-size">~4MB</span>
+                        </a>
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-aarch64-unknown-linux-gnu.tar.gz" class="download-link">
+                            <span>ARM64</span>
+                            <span class="download-size">~3MB</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="download-card">
+                    <div class="download-icon">🍎</div>
+                    <h3>macOS</h3>
+                    <div class="download-links">
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-apple-darwin.tar.gz" class="download-link">
+                            <span>Intel (x86_64)</span>
+                            <span class="download-size">~3MB</span>
+                        </a>
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-aarch64-apple-darwin.tar.gz" class="download-link">
+                            <span>Apple Silicon (M1/M2/M3)</span>
+                            <span class="download-size">~3MB</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="download-card">
+                    <div class="download-icon">🪟</div>
+                    <h3>Windows</h3>
+                    <div class="download-links">
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-pc-windows-msvc.zip" class="download-link">
+                            <span>x86_64</span>
+                            <span class="download-size">~3MB</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="download-note">
+                <p><strong>🚀 PHP Embed build</strong> = 10-100x faster PHP execution (requires <code>libphp-embed</code>)</p>
+                <p><strong>Standard build</strong> = Works with any PHP installation via <code>php-cgi</code></p>
+            </div>
+        </div>
+    </section>
+
     <!-- CTA Section -->
     <section class="cta">
         <div class="container">
@@ -385,8 +446,8 @@ cargo build --release</code></pre>
                         </svg>
                         Star on GitHub
                     </a>
-                    <a href="https://github.com/veloserve/veloserve/releases" class="btn btn-outline" target="_blank">
-                        Download v1.0.0
+                    <a href="#downloads" class="btn btn-outline">
+                        Download Binaries
                     </a>
                 </div>
             </div>

@@ -1115,6 +1115,106 @@ a {
     }
 }
 
+/* Downloads Section */
+.downloads {
+    padding: var(--section-padding) 0;
+    background: var(--bg-card);
+}
+
+.download-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.download-card {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.download-card:hover {
+    border-color: var(--border-light);
+    transform: translateY(-4px);
+}
+
+.download-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+}
+
+.download-card h3 {
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+}
+
+.download-links {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.download-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.download-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(249, 115, 22, 0.05);
+}
+
+.download-link.featured {
+    border-color: var(--accent);
+    background: rgba(249, 115, 22, 0.1);
+    color: var(--accent);
+}
+
+.download-link.featured:hover {
+    background: rgba(249, 115, 22, 0.15);
+}
+
+.download-size {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.download-note {
+    max-width: 700px;
+    margin: 40px auto 0;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.download-note p {
+    margin-bottom: 8px;
+}
+
+.download-note code {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 2px 8px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    color: var(--accent);
+}
+
 @media (max-width: 768px) {
     :root {
         --section-padding: 80px;
@@ -1180,6 +1280,10 @@ a {
     }
     
     .cloud-options {
+        grid-template-columns: 1fr;
+    }
+    
+    .download-grid {
         grid-template-columns: 1fr;
     }
     
