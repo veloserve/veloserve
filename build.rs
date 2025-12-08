@@ -6,6 +6,7 @@
 //! 3. Sets up include paths for FFI
 
 use std::env;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -14,6 +15,7 @@ fn main() {
         println!("cargo:rerun-if-changed=build.rs");
         
         setup_php_embed();
+        generate_php_bindings();
     }
 }
 
@@ -82,5 +84,95 @@ fn get_php_config(arg: &str) -> Option<String> {
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+}
+
+/// Generate PHP FFI bindings using bindgen (for embed SAPI)
+fn generate_php_bindings() {
+    let mut includes = get_php_config("--includes")
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|inc| inc.strip_prefix("-I").map(|s| s.to_string()))
+        .collect::<Vec<_>>();
+
+    // Add embed include dir if present (php-config --includes doesn't include sapi/embed)
+    if let Some(base) = includes.iter().find(|p| p.contains("/php/")) {
+        let embed_dir = format!("{}/sapi/embed", base);
+        includes.push(embed_dir);
+    }
+
+    // Write a minimal header that pulls in PHP SAPI definitions
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+    let header_path = out_dir.join("php_bindings.h");
+    std::fs::write(
+        &header_path,
+        r#"
+            #include <php.h>
+            #include <sapi/embed/php_embed.h>
+            #include <SAPI.h>
+            #include <php_main.h>
+            #include <php_variables.h>
+            #include <php_globals.h>
+        "#,
+    )
+    .expect("Failed to write php_bindings.h");
+
+    let mut builder = bindgen::Builder::default()
+        .header(header_path.to_string_lossy())
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .clang_args(
+            includes
+                .iter()
+                .map(|inc| format!("-I{}", inc))
+        )
+        // Keep only what we need for SAPI embedding
+        .allowlist_type("sapi_module_struct")
+        .allowlist_type("sapi_request_info")
+        .allowlist_type("sapi_headers_struct")
+        .allowlist_type("sapi_header_struct")
+        .allowlist_type("sapi_header_line")
+        .allowlist_type("sapi_globals_struct")
+        .allowlist_type("php_stream")
+        .allowlist_function("php_embed_init")
+        .allowlist_function("php_embed_shutdown")
+        .allowlist_var("php_embed_module")
+        .allowlist_function("php_execute_script")
+        .allowlist_function("php_request_startup")
+        .allowlist_function("php_request_shutdown")
+        .allowlist_function("php_module_startup")
+        .allowlist_function("php_module_shutdown")
+        .allowlist_function("zend_eval_string")
+        .allowlist_function("zend_eval_stringl")
+        .allowlist_function("php_output_start_default")
+        .allowlist_function("php_output_get_contents")
+        .allowlist_function("php_output_discard")
+        .allowlist_function("php_output_end")
+        .allowlist_function("php_output_get_length")
+        .allowlist_function("sapi_add_header")
+        .allowlist_var("php_embed_module")
+        .allowlist_var("sapi_globals")
+        .allowlist_function("zend_stream_init_filename")
+        .allowlist_function("zend_destroy_file_handle")
+        .allowlist_type("zend_file_handle")
+        .allowlist_type("zend_stream_type")
+        .allowlist_type("zend_stream")
+        .allowlist_type("zend_mmap")
+        .allowlist_type("zend_llist")
+        .allowlist_type("zend_llist_element")
+        // For $_SERVER registration
+        .allowlist_function("php_register_variable")
+        .allowlist_function("php_register_variable_safe")
+        .allowlist_function("php_import_environment_variables")
+        // Avoid generating layout tests to speed up builds and reduce dependencies
+        .layout_tests(false)
+        .generate_comments(false);
+
+    let bindings = builder
+        .generate()
+        .expect("Unable to generate PHP bindings");
+
+    let out_path = out_dir.join("php_bindings.rs");
+    bindings
+        .write_to_file(out_path)
+        .expect("Couldn't write PHP bindings");
 }
 

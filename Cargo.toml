@@ -15,6 +15,9 @@ default = []
 # Build with: cargo build --features php-embed
 php-embed = []
 
+[build-dependencies]
+bindgen = "0.69"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -57,6 +60,7 @@ percent-encoding = "2.3"
 chrono = { version = "0.4", features = ["serde"] }
 num_cpus = "1.16"
 socket2 = "0.5"
+once_cell = "1.19"
 
 # PHP process management (Unix only)
 [target.'cfg(unix)'.dependencies]

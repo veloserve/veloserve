@@ -1,32 +1,33 @@
-# VeloServe Configuration for WordPress Demo
-# Using php-cgi for proper POST handling
-
 [server]
 listen = "0.0.0.0:8080"
 workers = "auto"
 max_connections = 1000
 
 [php]
+mode = "embed"
 enable = true
 version = "8.3"
-binary_path = "/usr/bin/php-cgi"
+binary_path = "/usr/bin/php"
 workers = 4
-memory_limit = "256M"
-embed_stack_limit = "256M"
+memory_limit = "512M"
 max_execution_time = 300
+embed_stack_limit = "512M"
 
 # PHP Error Logging
 # Path to PHP error log file (errors are always logged, this controls where)
 error_log = "/var/log/veloserve/php_errors.log"
-# Display PHP errors in browser output (set to true for development)
+# Display PHP errors in browser output (not recommended for production)
 display_errors = false
 
+# Extra ini to reduce recursion/JIT issues in embed
 ini_settings = [
-    "cgi.force_redirect=0",
-    "cgi.fix_pathinfo=1",
     "opcache.enable=0",
-    "upload_max_filesize=64M",
-    "post_max_size=64M"
+    "opcache.enable_cli=0",
+    "opcache.jit=0",
+    "opcache.jit_buffer_size=0",
+    "pcre.jit=0",
+    "realpath_cache_size=0",
+    "realpath_cache_ttl=0"
 ]
 
 [cache]
@@ -43,3 +44,4 @@ index = ["index.php", "index.html"]
 
 [virtualhost.cache]
 enable = false
+

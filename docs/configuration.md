@@ -71,6 +71,11 @@ alpn = ["h2", "http/1.1"]
 # Enable PHP processing
 enable = true
 
+# PHP execution mode: "cgi" or "embed"
+# "cgi" - Uses php-cgi binary (default, works everywhere)
+# "embed" - Uses embedded PHP SAPI (requires --features php-embed)
+mode = "cgi"
+
 # PHP version (for display/logging)
 version = "8.3"
 
@@ -88,23 +93,29 @@ memory_limit = "256M"
 # Maximum script execution time in seconds
 max_execution_time = 30
 
-# Maximum input time in seconds
-max_input_time = 60
+# Stack limit for embed SAPI (e.g., "16M", "512M")
+# Increase this if you encounter stack overflow errors with complex PHP scripts
+embed_stack_limit = "512M"
 
-# Upload max filesize
-upload_max_filesize = "64M"
+# -----------------------------------------------------------------------------
+# PHP Error Logging
+# -----------------------------------------------------------------------------
+# Path to PHP error log file
+# All PHP errors, warnings, and notices will be logged here
+# error_log = "/var/log/veloserve/php_errors.log"
 
-# POST max size
-post_max_size = "64M"
+# Display PHP errors in browser output
+# WARNING: Set to false in production to avoid exposing sensitive information
+display_errors = false
 
 # Custom php.ini settings (passed as -d arguments)
+# Note: error_log and display_errors are configured above, don't duplicate them here
 ini_settings = [
-    "display_errors=Off",
-    "log_errors=On",
-    "error_log=/var/log/veloserve/php_error.log",
     "opcache.enable=1",
     "opcache.memory_consumption=128",
-    "opcache.max_accelerated_files=10000"
+    "opcache.max_accelerated_files=10000",
+    "upload_max_filesize=64M",
+    "post_max_size=64M"
 ]
 
 # File extensions treated as PHP

@@ -42,3 +42,4 @@ releases/
 # Website build
 website/.vercel
 website/node_modules/
+core

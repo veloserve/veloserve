@@ -5,6 +5,7 @@
 
 use crate::cache::CacheManager;
 use crate::config::Config;
+use crate::php::sapi::PhpResponse;
 use crate::php::PhpPool;
 use crate::server::static_files::StaticFileHandler;
 
@@ -69,7 +70,6 @@ impl RequestHandler {
     ) -> Result<Response<Full<Bytes>>> {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
-        let uri = req.uri().clone();
 
         // Health check endpoint (internal)
         if path == "/health" || path == "/healthz" {
@@ -242,24 +242,76 @@ impl RequestHandler {
             body.len()
         );
 
-        // Execute PHP script with full CGI environment and POST body
-        match self.php_pool.execute_cgi(
-            script_path,
-            req_parts,
-            doc_root,
-            script_name,
-            path_info,
-            &body,
-        ).await {
-            Ok(output) => {
-                // Parse PHP output (may contain headers)
-                self.parse_php_response(&output)
+        // Choose execution mode: embed or CGI
+        if self.php_pool.is_embed_mode() {
+            match self.php_pool.execute_embed(
+                script_path,
+                req_parts,
+                doc_root,
+                script_name,
+                path_info,
+                &body,
+            ).await {
+                Ok(resp) => self.build_embed_response(resp),
+                Err(e) => {
+                    warn!("PHP embed execution error: {}", e);
+                    self.internal_error(&format!("PHP Error: {}", e))
+                }
             }
-            Err(e) => {
-                warn!("PHP execution error: {}", e);
-                self.internal_error(&format!("PHP Error: {}", e))
+        } else {
+            // Execute PHP script with full CGI environment and POST body
+            match self.php_pool.execute_cgi(
+                script_path,
+                req_parts,
+                doc_root,
+                script_name,
+                path_info,
+                &body,
+            ).await {
+                Ok(output) => {
+                    // Parse PHP output (may contain headers)
+                    self.parse_php_response(&output)
+                }
+                Err(e) => {
+                    warn!("PHP execution error: {}", e);
+                    self.internal_error(&format!("PHP Error: {}", e))
+                }
             }
         }
+    }
+
+    /// Build HTTP response from embedded PHP output
+    fn build_embed_response(&self, resp: PhpResponse) -> Result<Response<Full<Bytes>>> {
+        let mut builder = Response::builder();
+
+        let status = StatusCode::from_u16(resp.status_code).unwrap_or(StatusCode::OK);
+        builder = builder.status(status);
+
+        let mut content_type_set = false;
+        // Headers is a Vec to support multiple headers with same name (e.g., Set-Cookie)
+        for (name, value) in &resp.headers {
+            if name.eq_ignore_ascii_case("content-type") {
+                content_type_set = true;
+            }
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+
+        if !content_type_set {
+            builder = builder.header("Content-Type", "text/html; charset=utf-8");
+        }
+
+        builder = builder
+            .header("Server", crate::SERVER_NAME)
+            .header("X-Powered-By", format!("VeloServe/{}", crate::VERSION));
+
+        Ok(builder
+            .body(Full::new(Bytes::from(resp.body)))
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Full::new(Bytes::from("Internal Server Error")))
+                    .unwrap()
+            }))
     }
 
     /// Parse PHP response (headers + body)

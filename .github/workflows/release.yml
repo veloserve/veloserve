@@ -10,13 +10,13 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.target }}${{ matrix.php_embed && '-php-embed' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux
+          # Linux (standard build)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
@@ -24,6 +24,12 @@ jobs:
             os: ubuntu-latest
             archive: tar.gz
             cross: true
+          
+          # Linux with PHP embed SAPI (high-performance PHP)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            php_embed: true
           
           # macOS
           - target: x86_64-apple-darwin
@@ -53,13 +59,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      - name: Install PHP embed dependencies
+        if: matrix.php_embed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-dev libphp-embed libxml2-dev libsodium-dev libargon2-dev llvm-dev libclang-dev clang
+
       - name: Build
         run: |
+          FEATURES=""
+          if [ "${{ matrix.php_embed }}" = "true" ]; then
+            FEATURES="--features php-embed"
+          fi
+          
           if [ "${{ matrix.cross }}" = "true" ]; then
             cargo install cross
-            cross build --release --target ${{ matrix.target }}
+            cross build --release --target ${{ matrix.target }} $FEATURES
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --release --target ${{ matrix.target }} $FEATURES
           fi
         shell: bash
 
@@ -67,7 +84,11 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}.tar.gz veloserve
+          SUFFIX=""
+          if [ "${{ matrix.php_embed }}" = "true" ]; then
+            SUFFIX="-php-embed"
+          fi
+          tar -czvf ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}${SUFFIX}.tar.gz veloserve
         shell: bash
 
       - name: Package (Windows)
@@ -80,8 +101,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: veloserve-${{ matrix.target }}
-          path: veloserve-${{ github.ref_name }}-${{ matrix.target }}.*
+          name: veloserve-${{ matrix.target }}${{ matrix.php_embed && '-php-embed' || '' }}
+          path: veloserve-${{ github.ref_name }}-${{ matrix.target }}*.*
 
   release:
     name: Create Release
@@ -116,13 +137,21 @@ jobs:
             
             **Or download binary directly:**
             
-            | Platform | Download |
-            |----------|----------|
-            | Linux x86_64 | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz) |
-            | Linux ARM64 | [veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz) |
-            | macOS x86_64 | [veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz) |
-            | macOS ARM64 | [veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz) |
-            | Windows x86_64 | [veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip) |
+            | Platform | Download | Notes |
+            |----------|----------|-------|
+            | Linux x86_64 | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz) | Standard build (PHP-CGI) |
+            | Linux x86_64 (PHP Embed) | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu-php-embed.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu-php-embed.tar.gz) | High-performance PHP SAPI |
+            | Linux ARM64 | [veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz) | Standard build (PHP-CGI) |
+            | macOS x86_64 | [veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz) | |
+            | macOS ARM64 | [veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz) | Apple Silicon |
+            | Windows x86_64 | [veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip) | |
+            
+            ### PHP Modes
+            
+            - **Standard build**: Uses `php-cgi` for PHP execution (~500 req/s)
+            - **PHP Embed build**: Embeds PHP directly for maximum performance (~10,000 req/s)
+            
+            For PHP Embed, set `mode = "embed"` in your config and ensure `libphp-embed` is installed.
             
             ### Quick Start
             

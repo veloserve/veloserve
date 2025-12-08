@@ -6,6 +6,8 @@ workers = "auto"
 max_connections = 1000
 
 [php]
+mode = "embed"
+embed_stack_limit = "512M"
 enable = true
 version = "8.3"
 binary_path = "/usr/bin/php"
@@ -22,7 +24,7 @@ default_ttl = 60
 # Local development virtual host
 [[virtualhost]]
 domain = "*"
-root = "/workspaces/workspaces/veloserve/examples/www"
+root = "/var/www/wordpress"
 index = ["index.html", "index.php"]
 
 [virtualhost.cache]

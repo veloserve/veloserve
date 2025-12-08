@@ -108,16 +108,50 @@ PHP is initialized once at startup. Each request:
 
 ## PHP Configuration
 
+### Error Logging
+
+VeloServe provides dedicated configuration options for PHP error logging:
+
+```toml
+[php]
+# Path to PHP error log file
+# All PHP errors, warnings, and notices will be written here
+error_log = "/var/log/veloserve/php_errors.log"
+
+# Display errors in browser output
+# Set to true for development, false for production
+display_errors = false
+```
+
+**Important:** Make sure the log directory exists and is writable:
+
+```bash
+sudo mkdir -p /var/log/veloserve
+sudo chown www-data:www-data /var/log/veloserve
+# Or for the user running VeloServe:
+sudo chown $USER:$USER /var/log/veloserve
+```
+
+### Viewing PHP Logs
+
+```bash
+# Watch PHP errors in real-time
+tail -f /var/log/veloserve/php_errors.log
+
+# View last 100 errors
+tail -100 /var/log/veloserve/php_errors.log
+
+# Search for specific errors
+grep -i "fatal" /var/log/veloserve/php_errors.log
+```
+
 ### php.ini Settings
 
-Pass custom settings via config:
+For additional customization, pass custom PHP INI settings:
 
 ```toml
 [php]
 ini_settings = [
-    "display_errors=Off",
-    "log_errors=On",
-    "error_log=/var/log/php_errors.log",
     "upload_max_filesize=64M",
     "post_max_size=64M",
     "max_input_vars=3000",
@@ -129,6 +163,8 @@ ini_settings = [
     "opcache.validate_timestamps=0"
 ]
 ```
+
+**Note:** The `error_log`, `display_errors`, and `log_errors` settings are automatically configured via the dedicated options above. You don't need to include them in `ini_settings`.
 
 ### Common Extensions
 

@@ -47,9 +47,11 @@ pub mod ffi;
 // SAPI module for embedded PHP
 pub mod sapi;
 
-use crate::config::PhpConfig;
+use crate::config::{PhpConfig, PhpMode};
+use crate::php::sapi::PhpResponse;
 use anyhow::{anyhow, Result};
 use hyper::Request;
+use hyper::http::request::Parts;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -59,12 +61,15 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// PHP worker pool for executing PHP scripts
 pub struct PhpPool {
     /// Pool configuration
     config: PhpConfig,
+
+    /// Execution mode
+    mode: PhpMode,
 
     /// Path to PHP binary
     php_binary: PathBuf,
@@ -83,6 +88,10 @@ pub struct PhpPool {
 
     /// PHP version string
     php_version: Mutex<Option<String>>,
+
+    /// Embedded PHP runtime (when using php-embed)
+    #[cfg(feature = "php-embed")]
+    embed_sapi: Mutex<Option<sapi::PhpSapi>>,
 }
 
 impl PhpPool {
@@ -98,12 +107,15 @@ impl PhpPool {
 
         Self {
             config: config.clone(),
+            mode: config.mode.clone(),
             php_binary,
             active_workers: AtomicUsize::new(0),
             semaphore: Arc::new(Semaphore::new(config.workers)),
             running: AtomicBool::new(false),
             available: AtomicBool::new(false),
             php_version: Mutex::new(None),
+            #[cfg(feature = "php-embed")]
+            embed_sapi: Mutex::new(None),
         }
     }
 
@@ -120,27 +132,67 @@ impl PhpPool {
             return Ok(());
         }
 
-        // Verify PHP binary exists
-        if !self.php_binary.exists() && self.php_binary.to_str() != Some("php") {
-            warn!(
-                "PHP binary not found at {:?}, PHP support disabled",
-                self.php_binary
-            );
-            self.available.store(false, Ordering::SeqCst);
-            return Ok(());
-        }
-
-        // Test PHP installation
-        match self.get_php_version().await {
-            Ok(version) => {
-                info!("PHP version: {}", version);
-                *self.php_version.lock() = Some(version);
-                self.available.store(true, Ordering::SeqCst);
+        match self.mode {
+            PhpMode::Embed => {
+                #[cfg(feature = "php-embed")]
+                {
+                    let mut sapi = sapi::PhpSapi::new();
+                    
+                    // Build embed configuration from PhpConfig
+                    let embed_config = sapi::PhpEmbedConfig {
+                        stack_limit: self.config.embed_stack_limit.clone(),
+                        error_log: self.config.error_log.clone(),
+                        display_errors: self.config.display_errors,
+                        ini_settings: self.config.ini_settings.clone(),
+                    };
+                    
+                    match sapi.initialize(embed_config) {
+                        Ok(_) => {
+                            info!("PHP embed mode enabled");
+                            *self.embed_sapi.lock() = Some(sapi);
+                            *self.php_version.lock() = Some("embed".to_string());
+                            self.available.store(true, Ordering::SeqCst);
+                            self.running.store(true, Ordering::SeqCst);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            warn!("PHP embed initialization failed: {}", e);
+                            self.available.store(false, Ordering::SeqCst);
+                            return Ok(());
+                        }
+                    }
+                }
+                #[cfg(not(feature = "php-embed"))]
+                {
+                    warn!("PHP embed mode requested but php-embed feature is not compiled in");
+                    self.available.store(false, Ordering::SeqCst);
+                    return Ok(());
+                }
             }
-            Err(e) => {
-                warn!("PHP not working: {}, PHP support disabled", e);
-                self.available.store(false, Ordering::SeqCst);
-                return Ok(());
+            PhpMode::Cgi => {
+                // Verify PHP binary exists
+                if !self.php_binary.exists() && self.php_binary.to_str() != Some("php") {
+                    warn!(
+                        "PHP binary not found at {:?}, PHP support disabled",
+                        self.php_binary
+                    );
+                    self.available.store(false, Ordering::SeqCst);
+                    return Ok(());
+                }
+
+                // Test PHP installation
+                match self.get_php_version().await {
+                    Ok(version) => {
+                        info!("PHP version: {}", version);
+                        *self.php_version.lock() = Some(version);
+                        self.available.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        warn!("PHP not working: {}, PHP support disabled", e);
+                        self.available.store(false, Ordering::SeqCst);
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -228,6 +280,10 @@ impl PhpPool {
             return Err(anyhow!("PHP support is not available"));
         }
 
+        if self.mode != PhpMode::Cgi {
+            return Err(anyhow!("PHP pool not in CGI mode"));
+        }
+
         // Acquire semaphore permit (limits concurrent PHP processes)
         let _permit = self.semaphore.acquire().await
             .map_err(|_| anyhow!("Failed to acquire PHP worker permit"))?;
@@ -254,6 +310,9 @@ impl PhpPool {
     pub async fn execute_simple(&self, script_path: &Path) -> Result<String> {
         if !self.is_available() {
             return Err(anyhow!("PHP support is not available"));
+        }
+        if self.mode != PhpMode::Cgi {
+            return Err(anyhow!("PHP pool not in CGI mode"));
         }
 
         let _permit = self.semaphore.acquire().await
@@ -471,8 +530,19 @@ impl PhpPool {
 
         // Security settings
         cmd.arg("-d").arg("expose_php=Off");
-        cmd.arg("-d").arg("display_errors=Off");
+        
+        // Error display settings
+        if self.config.display_errors {
+            cmd.arg("-d").arg("display_errors=On");
+        } else {
+            cmd.arg("-d").arg("display_errors=Off");
+        }
+        
+        // Error logging
         cmd.arg("-d").arg("log_errors=On");
+        if let Some(ref error_log) = self.config.error_log {
+            cmd.arg("-d").arg(format!("error_log={}", error_log));
+        }
 
         // Add custom ini settings
         for setting in &self.config.ini_settings {
@@ -503,12 +573,90 @@ impl PhpPool {
             "enabled": self.config.enable,
             "available": self.available.load(Ordering::SeqCst),
             "running": self.running.load(Ordering::SeqCst),
+            "mode": format!("{:?}", self.mode),
             "version": self.php_version.lock().clone(),
             "max_workers": self.config.workers,
             "active_workers": self.active_workers.load(Ordering::SeqCst),
             "memory_limit": self.config.memory_limit,
             "max_execution_time": self.config.max_execution_time,
         })
+    }
+
+    /// Returns true if embed mode is configured
+    pub fn is_embed_mode(&self) -> bool {
+        self.mode == PhpMode::Embed
+    }
+
+    /// Execute using embedded PHP SAPI (only when compiled with php-embed)
+    pub async fn execute_embed(
+        &self,
+        script_path: &Path,
+        req_parts: &Parts,
+        doc_root: &Path,
+        script_name: &str,
+        path_info: &str,
+        body: &[u8],
+    ) -> Result<PhpResponse> {
+        if self.mode != PhpMode::Embed {
+            return Err(anyhow!("PHP pool not in embed mode"));
+        }
+
+        if !self.is_available() {
+            return Err(anyhow!("PHP support is not available"));
+        }
+
+        #[cfg(not(feature = "php-embed"))]
+        {
+            return Err(anyhow!("php-embed feature not compiled"));
+        }
+
+        #[cfg(feature = "php-embed")]
+        {
+            let _permit = self
+                .semaphore
+                .acquire()
+                .await
+                .map_err(|_| anyhow!("Failed to acquire PHP worker permit"))?;
+
+            // Build CGI-like environment for $_SERVER
+            let mut server_vars =
+                build_cgi_env_from_parts(req_parts, script_path, doc_root, script_name, path_info);
+
+            if !body.is_empty() {
+                server_vars.insert("CONTENT_LENGTH".to_string(), body.len().to_string());
+            }
+
+            // Build GET vars map (simple parse without percent-decoding)
+            let mut get_vars = HashMap::new();
+            if let Some(query) = req_parts.uri.query() {
+                for pair in query.split('&') {
+                    if pair.is_empty() {
+                        continue;
+                    }
+                    let mut it = pair.splitn(2, '=');
+                    if let Some(k) = it.next() {
+                        let v = it.next().unwrap_or("");
+                        get_vars.insert(k.to_string(), v.to_string());
+                    }
+                }
+            }
+
+            // Headers map
+            let mut headers = HashMap::new();
+            for (name, value) in &req_parts.headers {
+                if let Ok(v) = value.to_str() {
+                    headers.insert(name.to_string(), v.to_string());
+                }
+            }
+
+            let guard = self.embed_sapi.lock();
+            let sapi = guard
+                .as_ref()
+                .ok_or_else(|| anyhow!("Embedded PHP SAPI not initialized"))?;
+
+            sapi.execute_script(script_path, &server_vars, &get_vars, body, &headers)
+                .map_err(|e| anyhow!(e))
+        }
     }
 }
 

@@ -178,6 +178,14 @@ fn default_max_body_size() -> String {
 /// PHP configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhpConfig {
+    /// PHP execution mode: cgi or embed
+    #[serde(default = "default_php_mode")]
+    pub mode: PhpMode,
+
+    /// Stack limit override for embed SAPI (e.g. "16M")
+    #[serde(default = "default_embed_stack_limit")]
+    pub embed_stack_limit: String,
+
     /// PHP version
     #[serde(default = "default_php_version")]
     pub version: String,
@@ -198,6 +206,15 @@ pub struct PhpConfig {
     #[serde(default)]
     pub binary_path: Option<String>,
 
+    /// Path to PHP error log file
+    /// When set, PHP errors will be written to this file
+    #[serde(default)]
+    pub error_log: Option<String>,
+
+    /// Display PHP errors in output (not recommended for production)
+    #[serde(default)]
+    pub display_errors: bool,
+
     /// Additional PHP configuration
     #[serde(default)]
     pub ini_settings: Vec<String>,
@@ -210,15 +227,34 @@ pub struct PhpConfig {
 impl Default for PhpConfig {
     fn default() -> Self {
         Self {
+            mode: default_php_mode(),
+            embed_stack_limit: default_embed_stack_limit(),
             version: default_php_version(),
             workers: default_php_workers(),
             memory_limit: default_memory_limit(),
             max_execution_time: default_max_execution_time(),
             binary_path: None,
+            error_log: None,
+            display_errors: false,
             ini_settings: vec![],
             enable: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PhpMode {
+    Cgi,
+    Embed,
+}
+
+fn default_php_mode() -> PhpMode {
+    PhpMode::Cgi
+}
+
+fn default_embed_stack_limit() -> String {
+    "16M".to_string()
 }
 
 fn default_php_version() -> String {
