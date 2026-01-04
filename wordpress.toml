@@ -1,5 +1,5 @@
 # VeloServe Configuration for WordPress Demo
-# Using php-cgi for proper POST handling
+# Start with: cargo run -- --config wordpress.toml
 
 [server]
 listen = "0.0.0.0:8080"
@@ -9,24 +9,15 @@ max_connections = 1000
 [php]
 enable = true
 version = "8.3"
-binary_path = "/usr/bin/php-cgi"
+binary_path = "/usr/local/php/current/bin/php-cgi"
 workers = 4
 memory_limit = "256M"
-embed_stack_limit = "256M"
 max_execution_time = 300
-
-# PHP Error Logging
-# Path to PHP error log file (errors are always logged, this controls where)
-error_log = "/var/log/veloserve/php_errors.log"
-# Display PHP errors in browser output (set to true for development)
-display_errors = false
-
 ini_settings = [
-    "cgi.force_redirect=0",
-    "cgi.fix_pathinfo=1",
-    "opcache.enable=0",
+    "opcache.enable=1",
+    "opcache.memory_consumption=128",
     "upload_max_filesize=64M",
-    "post_max_size=64M"
+    "post_max_size=64M",
 ]
 
 [cache]
@@ -35,6 +26,7 @@ storage = "memory"
 memory_limit = "256M"
 default_ttl = 3600
 
+# WordPress virtual host
 [[virtualhost]]
 domain = "*"
 root = "/var/www/wordpress"
@@ -42,4 +34,4 @@ platform = "wordpress"
 index = ["index.php", "index.html"]
 
 [virtualhost.cache]
-enable = false
+enable = false # Disable cache for demo/development
