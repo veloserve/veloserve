@@ -1,0 +1,182 @@
+#!/bin/bash
+# VeloServe WHM Plugin Installation Script
+# 
+# This script installs the VeloServe WHM plugin on cPanel servers
+
+set -e
+
+VELOSERVE_VERSION="1.0.0"
+PLUGIN_DIR="/usr/local/cpanel/whostmgr/docroot/cgi/veloserve"
+REGISTRY_DIR="/var/cpanel/apps"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}VeloServe WHM Plugin Installer${NC}"
+echo "================================"
+echo ""
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then 
+    echo -e "${RED}Error: Please run as root${NC}"
+    exit 1
+fi
+
+# Check if cPanel is installed
+if [ ! -d "/usr/local/cpanel" ]; then
+    echo -e "${RED}Error: cPanel not detected${NC}"
+    exit 1
+fi
+
+echo "Installing VeloServe WHM Plugin v${VELOSERVE_VERSION}..."
+
+# Create plugin directory
+mkdir -p ${PLUGIN_DIR}
+
+# Install CGI script
+cp whm/veloserve.cgi ${PLUGIN_DIR}/
+chmod 755 ${PLUGIN_DIR}/veloserve.cgi
+
+# Install static assets (CSS, JS, images)
+mkdir -p ${PLUGIN_DIR}/assets
+cp -r whm/assets/* ${PLUGIN_DIR}/assets/ 2>/dev/null || true
+
+# Create cPanel App Registry entry
+cat > ${REGISTRY_DIR}/veloserve.conf << 'EOF'
+name=veloserve
+service=veloserve
+user=root
+url=/cgi/veloserve/veloserve.cgi
+EOF
+
+# Register with WHM
+/usr/local/cpanel/bin/register_appconfig ${REGISTRY_DIR}/veloserve.conf
+
+# Create required directories
+mkdir -p /etc/veloserve
+mkdir -p /etc/veloserve/vhosts
+mkdir -p /var/log/veloserve
+mkdir -p /run/veloserve
+
+# Set permissions
+chmod 755 /etc/veloserve
+chmod 755 /var/log/veloserve
+chmod 755 /run/veloserve
+
+# Install systemd service (if systemd is present)
+if [ -d "/etc/systemd/system" ]; then
+    echo "Installing systemd service..."
+    
+    cat > /etc/systemd/system/veloserve.service << 'EOF'
+[Unit]
+Description=VeloServe Web Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/veloserve start --config /etc/veloserve/veloserve.toml
+ExecStop=/usr/local/bin/veloserve stop
+ExecReload=/usr/local/bin/veloserve reload
+PIDFile=/run/veloserve.pid
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    echo -e "${GREEN}Systemd service installed${NC}"
+fi
+
+# Install init.d script (fallback)
+if [ -d "/etc/init.d" ]; then
+    echo "Installing init.d script..."
+    
+    cat > /etc/init.d/veloserve << 'EOF'
+#!/bin/bash
+# chkconfig: 2345 99 01
+# description: VeloServe Web Server
+
+VELOSERVE_BIN=/usr/local/bin/veloserve
+VELOSERVE_CONFIG=/etc/veloserve/veloserve.toml
+PIDFILE=/run/veloserve.pid
+
+case "$1" in
+    start)
+        echo "Starting VeloServe..."
+        $VELOSERVE_BIN start --config $VELOSERVE_CONFIG
+        ;;
+    stop)
+        echo "Stopping VeloServe..."
+        $VELOSERVE_BIN stop
+        ;;
+    restart)
+        echo "Restarting VeloServe..."
+        $VELOSERVE_BIN restart
+        ;;
+    status)
+        $VELOSERVE_BIN status
+        ;;
+    reload)
+        echo "Reloading VeloServe configuration..."
+        $VELOSERVE_BIN reload
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|reload}"
+        exit 1
+        ;;
+esac
+EOF
+
+    chmod +x /etc/init.d/veloserve
+    chkconfig --add veloserve 2>/dev/null || true
+    echo -e "${GREEN}Init.d script installed${NC}"
+fi
+
+# Create default configuration
+if [ ! -f "/etc/veloserve/veloserve.toml" ]; then
+    echo "Creating default configuration..."
+    
+    cat > /etc/veloserve/veloserve.toml << 'EOF'
+[server]
+listen = "0.0.0.0:80"
+# listen_ssl = "0.0.0.0:443"
+workers = "auto"
+max_connections = 10000
+
+[php]
+handler = "socket"
+socket_path = "/run/veloserve/php.sock"
+
+[cache]
+enable = true
+storage = "memory"
+memory_limit = "512M"
+default_ttl = 3600
+
+# Include cPanel virtual hosts
+include = "/etc/veloserve/vhosts/*.toml"
+EOF
+
+fi
+
+echo ""
+echo -e "${GREEN}Installation complete!${NC}"
+echo ""
+echo "Next steps:"
+echo "1. Access WHM and navigate to: Plugins > VeloServe"
+echo "2. Configure virtual hosts from Apache"
+echo "3. Start VeloServe service"
+echo ""
+echo "Commands:"
+echo "  service veloserve start    # Start server"
+echo "  service veloserve stop     # Stop server"
+echo "  service veloserve reload   # Reload config"
+echo ""
+echo "Or use systemd:"
+echo "  systemctl start veloserve"
+echo "  systemctl enable veloserve  # Auto-start on boot"
