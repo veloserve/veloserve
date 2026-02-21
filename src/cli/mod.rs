@@ -51,6 +51,18 @@ pub enum ConfigCommand {
     Test,
     /// Show default configuration
     ShowDefault,
+    /// Convert Apache httpd.conf to VeloServe TOML
+    ConvertApache {
+        /// Path to Apache httpd.conf or vhost file
+        #[arg(short, long)]
+        input: String,
+        /// Output file path (default: stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Strict mode: fail on unsupported directives
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 /// Handle cache commands
@@ -215,6 +227,41 @@ default_ttl = 3600
 # vary = ["Accept-Encoding"]
 "#;
             println!("{}", default_config);
+        }
+        ConfigCommand::ConvertApache { input, output, strict } => {
+            use crate::apache_compat::{ApacheConfig, ApacheToVeloServeConverter};
+            
+            println!("Converting Apache configuration: {}", input);
+            
+            // Parse Apache config
+            let apache_config = ApacheConfig::from_file(&input)
+                .map_err(|e| anyhow!("Failed to parse Apache config: {}", e))?;
+            
+            println!("✓ Parsed {} virtual hosts", apache_config.virtual_hosts.len());
+            
+            // Convert to VeloServe
+            let converter = ApacheToVeloServeConverter::new()
+                .strict(strict);
+            
+            let toml_output = converter.to_toml(&apache_config);
+            
+            // Write output
+            if let Some(output_path) = output {
+                fs::write(&output_path, &toml_output)?;
+                println!("✓ Converted configuration written to: {}", output_path);
+            } else {
+                println!("\n=== Converted Configuration ===\n");
+                println!("{}", toml_output);
+            }
+            
+            // Summary
+            println!("\n=== Summary ===");
+            println!("Virtual Hosts: {}", apache_config.virtual_hosts.len());
+            for vhost in &apache_config.virtual_hosts {
+                if let Some(domain) = vhost.server_names.first() {
+                    println!("  - {} (port {})", domain, vhost.port);
+                }
+            }
         }
     }
     Ok(())
