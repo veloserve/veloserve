@@ -25,7 +25,7 @@ use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// VeloServe HTTP Server
 pub struct Server {

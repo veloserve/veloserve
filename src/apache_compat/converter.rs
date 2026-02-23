@@ -3,10 +3,9 @@
 //! Converts parsed Apache configuration to VeloServe TOML format.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use crate::apache_compat::{ApacheConfig, ApacheVirtualHost};
-use crate::config::{Config, VirtualHost as VeloServeVhost};
+use crate::config::{Config, VirtualHostConfig};
 
 /// Converts Apache configuration to VeloServe configuration
 pub struct ApacheToVeloServeConverter {
@@ -40,87 +39,69 @@ impl ApacheToVeloServeConverter {
     pub fn convert(&self, apache: &ApacheConfig) -> Config {
         let mut config = Config::default();
 
-        // Convert virtual hosts
         for apache_vhost in &apache.virtual_hosts {
             if let Ok(veloserve_vhost) = self.convert_vhost(apache_vhost) {
-                config.virtual_hosts.push(veloserve_vhost);
+                config.virtualhost.push(veloserve_vhost);
             }
         }
 
-        // Apply global PHP settings
         self.apply_global_php_settings(&mut config, apache);
 
         config
     }
 
-    /// Convert single Apache VirtualHost to VeloServe VirtualHost
-    fn convert_vhost(&self, apache: &ApacheVirtualHost) -> Result<VeloServeVhost, ConversionError> {
-        let mut vhost = VeloServeVhost::default();
+    /// Convert single Apache VirtualHost to VeloServe VirtualHostConfig
+    fn convert_vhost(&self, apache: &ApacheVirtualHost) -> Result<VirtualHostConfig, ConversionError> {
+        let domain = apache.server_names.first()
+            .cloned()
+            .unwrap_or_default();
 
-        // Server names (primary is first)
-        if let Some(primary) = apache.server_names.first() {
-            vhost.domain = primary.clone();
-        }
+        let root = apache.document_root
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                if self.strict {
+                    String::new()
+                } else {
+                    "/var/www/html".to_string()
+                }
+            });
 
-        // Document root
-        if let Some(ref docroot) = apache.document_root {
-            vhost.root = docroot.clone();
-        } else if self.strict {
+        if root.is_empty() && self.strict {
             return Err(ConversionError::MissingDocumentRoot);
         }
 
-        // Auto-detect platform
-        vhost.platform = self.detect_platform(&vhost.root);
+        let platform = self.detect_platform(&root);
 
-        // SSL configuration
-        if let Some(ref apache_ssl) = apache.ssl {
-            if apache_ssl.enabled {
-                // Note: In full implementation, this would set SSL fields
-                // For now, we'll add a comment about SSL
-            }
-        }
-
-        // PHP settings from php_admin_value
-        for (key, value) in &apache.php_settings {
-            match key.as_str() {
-                "memory_limit" => {
-                    // Map to VeloServe PHP config
-                }
-                "max_execution_time" => {
-                    // Map to VeloServe PHP config
-                }
-                _ => {
-                    // Store as custom PHP setting
-                }
-            }
-        }
-
-        Ok(vhost)
+        Ok(VirtualHostConfig {
+            domain,
+            root,
+            platform: Some(platform),
+            cache: None,
+            index: vec!["index.php".to_string(), "index.html".to_string()],
+            error_pages: std::collections::HashMap::new(),
+        })
     }
 
-    /// Detect CMS/platform from document root
-    fn detect_platform(&self, docroot: &PathBuf) -> String {
-        // Check for WordPress
-        if docroot.join("wp-config.php").exists() {
+    /// Detect CMS/platform from document root path
+    fn detect_platform(&self, docroot: &str) -> String {
+        let path = std::path::Path::new(docroot);
+
+        if path.join("wp-config.php").exists() {
             return "wordpress".to_string();
         }
-
-        // Check for Magento 2
-        if docroot.join("app/etc/env.php").exists() {
+        if path.join("app/etc/env.php").exists() {
             return "magento2".to_string();
         }
-
-        // Check for Laravel
-        if docroot.join("artisan").exists() {
+        if path.join("artisan").exists() {
             return "laravel".to_string();
         }
 
-        // Default
         "generic".to_string()
     }
 
     /// Apply global PHP settings from Apache config
-    fn apply_global_php_settings(&self, config: &mut Config, apache: &ApacheConfig) {
+    fn apply_global_php_settings(&self, _config: &mut Config, apache: &ApacheConfig) {
         for directive in &apache.global_directives {
             if let crate::apache_compat::ApacheDirective::Simple { name, value } = directive {
                 if name == "php_admin_value" || name == "php_value" {
@@ -158,20 +139,19 @@ impl ApacheToVeloServeConverter {
              \n"
         );
 
-        // Add virtual hosts
-        for (i, vhost) in config.virtual_hosts.iter().enumerate() {
+        for vhost in &config.virtualhost {
             output.push_str(&format!(
                 "[[virtualhost]]\n\
                  domain = \"{}\"\n\
                  root = \"{}\"\n\
                  platform = \"{}\"\n\n",
                 vhost.domain,
-                vhost.root.display(),
-                vhost.platform
+                vhost.root,
+                vhost.platform.as_deref().unwrap_or("generic"),
             ));
 
-            // Add cache settings for known platforms
-            if vhost.platform == "wordpress" || vhost.platform == "magento2" {
+            let platform = vhost.platform.as_deref().unwrap_or("");
+            if platform == "wordpress" || platform == "magento2" {
                 output.push_str(
                     "[virtualhost.cache]\n\
                      enable = true\n\

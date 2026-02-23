@@ -54,8 +54,8 @@ jobs:
       - name: Install AlmaLinux build dependencies
         if: matrix.container == 'almalinux:9'
         run: |
-          dnf install -y epel-release
-          dnf install -y gcc gcc-c++ make curl git openssl-devel perl-core clang-devel
+          dnf install -y --allowerasing epel-release curl
+          dnf install -y gcc gcc-c++ make git openssl-devel perl-core clang-devel
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 

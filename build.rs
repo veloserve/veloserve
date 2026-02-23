@@ -45,10 +45,8 @@ fn setup_php_embed() {
         .map(|v| v.trim().split('.').take(2).collect::<Vec<_>>().join("."))
         .unwrap_or_else(|| "8.3".to_string());
     
-    let major_minor = php_version.replace('.', "");
+    let _major_minor = php_version.replace('.', "");
     
-    // Try version-specific first, then generic
-    // The library is typically named libphp8.3.so or libphp.so
     println!("cargo:rustc-link-lib=php{}", php_version);
     
     // Get additional libraries PHP depends on

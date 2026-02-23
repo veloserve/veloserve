@@ -3,7 +3,7 @@
 //! Parses Apache httpd.conf and vhost files into structured data.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::apache_compat::{
     ApacheConfig, ApacheDirective, ApacheSslConfig, ApacheVirtualHost,

@@ -45,7 +45,7 @@ pub struct ApacheVirtualHost {
 }
 
 /// SSL configuration from Apache
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ApacheSslConfig {
     pub enabled: bool,
     pub certificate_file: Option<PathBuf>,
