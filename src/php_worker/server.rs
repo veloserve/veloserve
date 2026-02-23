@@ -2,24 +2,33 @@
 //!
 //! Manages the socket server that receives PHP requests from VeloServe
 //! and dispatches them to worker processes using EA-PHP or system PHP.
+//! Unix-only: uses Unix domain sockets for IPC.
 
+#[cfg(unix)]
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
 use std::thread;
 
 use crate::Config;
+#[cfg(unix)]
 use crate::pool::WorkerPool;
+#[cfg(unix)]
 use crate::protocol::{PhpRequest, PhpResponse, RequestType};
 
 pub struct PhpWorkerServer {
     config: Config,
+    #[cfg(unix)]
     pool: Arc<Mutex<WorkerPool>>,
 }
 
 impl PhpWorkerServer {
     pub fn new(config: Config, php_binary: PathBuf) -> Self {
+        #[cfg(unix)]
         let pool = Arc::new(Mutex::new(WorkerPool::new(
             config.workers,
             config.memory_limit.clone(),
@@ -28,14 +37,18 @@ impl PhpWorkerServer {
             php_binary,
         )));
 
-        Self { config, pool }
+        Self {
+            config,
+            #[cfg(unix)]
+            pool,
+        }
     }
 
+    #[cfg(unix)]
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         if self.config.socket.starts_with('/') {
             let _ = std::fs::remove_file(&self.config.socket);
 
-            // Ensure parent directory exists
             if let Some(parent) = std::path::Path::new(&self.config.socket).parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -43,7 +56,6 @@ impl PhpWorkerServer {
 
         let listener = UnixListener::bind(&self.config.socket)?;
 
-        #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let metadata = std::fs::metadata(&self.config.socket)?;
@@ -74,8 +86,14 @@ impl PhpWorkerServer {
 
         Ok(())
     }
+
+    #[cfg(not(unix))]
+    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Err("vephp requires Unix (Linux/macOS). Windows is not supported.".into())
+    }
 }
 
+#[cfg(unix)]
 fn handle_connection(
     mut stream: UnixStream,
     pool: Arc<Mutex<WorkerPool>>,
@@ -123,6 +141,7 @@ fn handle_connection(
     Ok(())
 }
 
+#[cfg(unix)]
 fn send_response(
     stream: &mut UnixStream,
     response: &PhpResponse,
