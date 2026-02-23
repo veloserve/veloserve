@@ -1,6 +1,7 @@
 //! Individual PHP Worker
 //!
 //! Manages a single PHP worker process and communication with it.
+//! Uses EA-PHP, CloudLinux alt-PHP, or system php-cgi.
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -17,19 +18,16 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Spawn a new PHP worker process
-    pub fn spawn(id: usize, php_ini: Option<&PathBuf>) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut cmd = Command::new("php");
-        
-        // Add custom php.ini if provided
+    /// Spawn a new PHP worker process using the specified PHP binary
+    pub fn spawn(id: usize, php_binary: &PathBuf, php_ini: Option<&PathBuf>) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut cmd = Command::new(php_binary);
+
         if let Some(ini) = php_ini {
             cmd.arg("-c").arg(ini);
         }
-        
-        // Enable CGI mode
-        cmd.arg("-q"); // Quiet mode
-        
-        // Set up pipes for communication
+
+        cmd.arg("-q");
+
         cmd.stdin(Stdio::piped())
            .stdout(Stdio::piped())
            .stderr(Stdio::piped());
@@ -97,8 +95,8 @@ mod tests {
 
     #[test]
     fn test_worker_spawn() {
-        // This test requires PHP to be installed
-        if let Ok(mut worker) = Worker::spawn(0, None) {
+        let php = PathBuf::from("php-cgi");
+        if let Ok(mut worker) = Worker::spawn(0, &php, None) {
             assert!(worker.is_alive());
             let _ = worker.kill();
         }

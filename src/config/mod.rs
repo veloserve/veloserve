@@ -178,7 +178,7 @@ fn default_max_body_size() -> String {
 /// PHP configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhpConfig {
-    /// PHP execution mode: cgi or embed
+    /// PHP execution mode: "cgi", "socket" (vephp), or "embed"
     #[serde(default = "default_php_mode")]
     pub mode: PhpMode,
 
@@ -202,12 +202,15 @@ pub struct PhpConfig {
     #[serde(default = "default_max_execution_time")]
     pub max_execution_time: u64,
 
-    /// Path to PHP binary
+    /// Path to PHP binary (auto-discovers EA-PHP if not set)
     #[serde(default)]
     pub binary_path: Option<String>,
 
+    /// Unix socket path for vephp worker (used when mode = "socket")
+    #[serde(default = "default_socket_path")]
+    pub socket_path: String,
+
     /// Path to PHP error log file
-    /// When set, PHP errors will be written to this file
     #[serde(default)]
     pub error_log: Option<String>,
 
@@ -234,6 +237,7 @@ impl Default for PhpConfig {
             memory_limit: default_memory_limit(),
             max_execution_time: default_max_execution_time(),
             binary_path: None,
+            socket_path: default_socket_path(),
             error_log: None,
             display_errors: false,
             ini_settings: vec![],
@@ -242,11 +246,20 @@ impl Default for PhpConfig {
     }
 }
 
+/// PHP execution mode
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PhpMode {
+    /// Spawn php-cgi per request (simple, portable)
     Cgi,
+    /// Connect to vephp persistent worker via Unix socket (like lsphp)
+    Socket,
+    /// Embedded PHP via libphp FFI (maximum performance, requires --features php-embed)
     Embed,
+}
+
+fn default_socket_path() -> String {
+    "/run/veloserve/php.sock".to_string()
 }
 
 fn default_php_mode() -> PhpMode {

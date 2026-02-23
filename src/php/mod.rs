@@ -169,9 +169,30 @@ impl PhpPool {
                     return Ok(());
                 }
             }
+            PhpMode::Socket => {
+                // vephp mode: connect to external persistent PHP worker via Unix socket
+                let socket_path = &self.config.socket_path;
+                info!("PHP socket mode: connecting to vephp at {}", socket_path);
+
+                if std::path::Path::new(socket_path).exists() {
+                    info!("vephp socket found at {}", socket_path);
+                    *self.php_version.lock() = Some(format!("vephp ({})", socket_path));
+                    self.available.store(true, Ordering::SeqCst);
+                } else {
+                    warn!(
+                        "vephp socket not found at {}. Start vephp first: vephp -s {}",
+                        socket_path, socket_path
+                    );
+                    self.available.store(false, Ordering::SeqCst);
+                    return Ok(());
+                }
+            }
             PhpMode::Cgi => {
                 // Verify PHP binary exists
-                if !self.php_binary.exists() && self.php_binary.to_str() != Some("php") {
+                if !self.php_binary.exists()
+                    && self.php_binary.to_str() != Some("php")
+                    && self.php_binary.to_str() != Some("php-cgi")
+                {
                     warn!(
                         "PHP binary not found at {:?}, PHP support disabled",
                         self.php_binary
@@ -280,8 +301,8 @@ impl PhpPool {
             return Err(anyhow!("PHP support is not available"));
         }
 
-        if self.mode != PhpMode::Cgi {
-            return Err(anyhow!("PHP pool not in CGI mode"));
+        if self.mode != PhpMode::Cgi && self.mode != PhpMode::Socket {
+            return Err(anyhow!("PHP pool not in CGI/Socket mode"));
         }
 
         // Acquire semaphore permit (limits concurrent PHP processes)
@@ -311,8 +332,8 @@ impl PhpPool {
         if !self.is_available() {
             return Err(anyhow!("PHP support is not available"));
         }
-        if self.mode != PhpMode::Cgi {
-            return Err(anyhow!("PHP pool not in CGI mode"));
+        if self.mode != PhpMode::Cgi && self.mode != PhpMode::Socket {
+            return Err(anyhow!("PHP pool not in CGI/Socket mode"));
         }
 
         let _permit = self.semaphore.acquire().await
@@ -660,13 +681,22 @@ impl PhpPool {
     }
 }
 
-/// Find PHP binary on the system
+/// Find PHP binary on the system.
+///
+/// Search order:
+/// 1. Version-specific system paths (`/usr/bin/php8.3`, etc.)
+/// 2. cPanel EA-PHP paths (`/opt/cpanel/ea-phpXX/root/usr/bin/php-cgi`) - newest first
+/// 3. CloudLinux alt-php paths (`/opt/alt/phpXX/usr/bin/php-cgi`)
+/// 4. Common system paths (`/usr/bin/php-cgi`, `/usr/bin/php`)
 fn find_php_binary(preferred_version: &str) -> PathBuf {
-    // Try version-specific paths first
+    let ver_nodot = preferred_version.replace('.', "");
+
+    // Version-specific system paths
     let version_paths = [
+        format!("/usr/bin/php-cgi{}", preferred_version),
         format!("/usr/bin/php{}", preferred_version),
         format!("/usr/local/bin/php{}", preferred_version),
-        format!("/usr/bin/php{}", preferred_version.replace('.', "")),
+        format!("/usr/bin/php{}", ver_nodot),
     ];
 
     for path in &version_paths {
@@ -676,9 +706,36 @@ fn find_php_binary(preferred_version: &str) -> PathBuf {
         }
     }
 
-    // Try common paths
+    // cPanel EA-PHP: preferred version first, then scan newest to oldest
+    let ea_preferred = format!("/opt/cpanel/ea-php{}/root/usr/bin/php-cgi", ver_nodot);
+    if PathBuf::from(&ea_preferred).exists() {
+        info!("Using cPanel EA-PHP: {}", ea_preferred);
+        return PathBuf::from(ea_preferred);
+    }
+
+    let php_versions = ["84", "83", "82", "81", "80", "74", "73", "72"];
+    for ver in &php_versions {
+        let ea_path = format!("/opt/cpanel/ea-php{}/root/usr/bin/php-cgi", ver);
+        if PathBuf::from(&ea_path).exists() {
+            info!("Using cPanel EA-PHP {}: {}", ver, ea_path);
+            return PathBuf::from(ea_path);
+        }
+    }
+
+    // CloudLinux alt-php
+    for ver in &php_versions {
+        let alt_path = format!("/opt/alt/php{}/usr/bin/php-cgi", ver);
+        if PathBuf::from(&alt_path).exists() {
+            info!("Using CloudLinux alt-PHP {}: {}", ver, alt_path);
+            return PathBuf::from(alt_path);
+        }
+    }
+
+    // Common system paths
     let common_paths = [
+        "/usr/bin/php-cgi",
         "/usr/bin/php",
+        "/usr/local/bin/php-cgi",
         "/usr/local/bin/php",
         "/opt/php/bin/php",
         "/opt/homebrew/bin/php",
@@ -691,8 +748,7 @@ fn find_php_binary(preferred_version: &str) -> PathBuf {
         }
     }
 
-    // Default to "php" and hope it's in PATH
-    PathBuf::from("php")
+    PathBuf::from("php-cgi")
 }
 
 /// Build CGI environment from request parts (used when body has been consumed)

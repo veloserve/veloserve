@@ -10,27 +10,33 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}${{ matrix.php_embed && '-php-embed' || '' }}
+    name: Build ${{ matrix.target }}${{ matrix.suffix }}
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container || '' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux (standard build)
+          # Linux x86_64 - built on AlmaLinux 9 for cPanel/RHEL compatibility (glibc 2.34)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            container: almalinux:9
+            archive: tar.gz
+            suffix: ""
+
+          # Linux x86_64 with PHP embed SAPI (Ubuntu, for dev/non-cPanel)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+            suffix: "-php-embed"
+            php_embed: true
+
+          # Linux ARM64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
             cross: true
-          
-          # Linux with PHP embed SAPI (high-performance PHP)
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
-            php_embed: true
-          
+
           # macOS
           - target: x86_64-apple-darwin
             os: macos-latest
@@ -38,17 +44,26 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
-          
+
           # Windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             archive: zip
 
     steps:
+      - name: Install AlmaLinux build dependencies
+        if: matrix.container == 'almalinux:9'
+        run: |
+          dnf install -y epel-release
+          dnf install -y gcc gcc-c++ make curl git openssl-devel perl-core clang-devel
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (non-container)
+        if: "!matrix.container"
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -65,30 +80,41 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y php-dev libphp-embed libxml2-dev libsodium-dev libargon2-dev llvm-dev libclang-dev clang
 
-      - name: Build
+      - name: Build (AlmaLinux container)
+        if: matrix.container == 'almalinux:9'
         run: |
-          FEATURES=""
-          if [ "${{ matrix.php_embed }}" = "true" ]; then
-            FEATURES="--features php-embed"
-          fi
-          
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            cargo install cross
-            cross build --release --target ${{ matrix.target }} $FEATURES
-          else
-            cargo build --release --target ${{ matrix.target }} $FEATURES
-          fi
+          source $HOME/.cargo/env
+          cargo build --release --target ${{ matrix.target }}
+        shell: bash
+
+      - name: Build (PHP embed)
+        if: matrix.php_embed
+        run: cargo build --release --target ${{ matrix.target }} --features php-embed
+        shell: bash
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: |
+          cargo install cross
+          cross build --release --target ${{ matrix.target }}
+        shell: bash
+
+      - name: Build (standard, non-container)
+        if: "!matrix.container && !matrix.cross && !matrix.php_embed"
+        run: cargo build --release --target ${{ matrix.target }}
         shell: bash
 
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          SUFFIX=""
-          if [ "${{ matrix.php_embed }}" = "true" ]; then
-            SUFFIX="-php-embed"
+          SUFFIX="${{ matrix.suffix }}"
+          # Include both veloserve and vephp binaries if they exist
+          BINARIES="veloserve"
+          if [ -f "vephp" ]; then
+            BINARIES="$BINARIES vephp"
           fi
-          tar -czvf ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}${SUFFIX}.tar.gz veloserve
+          tar -czvf ../../../veloserve-${{ github.ref_name }}-${{ matrix.target }}${SUFFIX}.tar.gz $BINARIES
         shell: bash
 
       - name: Package (Windows)
@@ -101,7 +127,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: veloserve-${{ matrix.target }}${{ matrix.php_embed && '-php-embed' || '' }}
+          name: veloserve-${{ matrix.target }}${{ matrix.suffix }}
           path: veloserve-${{ github.ref_name }}-${{ matrix.target }}*.*
 
   release:
@@ -110,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,44 +152,39 @@ jobs:
           files: artifacts/**/*
           generate_release_notes: true
           body: |
-            ## 🚀 VeloServe ${{ github.ref_name }}
-            
+            ## VeloServe ${{ github.ref_name }}
+
             ### Installation
-            
-            **One-liner (Linux/macOS):**
+
             ```bash
             curl -sSL https://raw.githubusercontent.com/veloserve/veloserve/main/scripts/install.sh | bash
             ```
-            
-            **Or download binary directly:**
-            
+
+            ### Downloads
+
             | Platform | Download | Notes |
             |----------|----------|-------|
-            | Linux x86_64 | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz) | Standard build (PHP-CGI) |
-            | Linux x86_64 (PHP Embed) | [veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu-php-embed.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-unknown-linux-gnu-php-embed.tar.gz) | High-performance PHP SAPI |
-            | Linux ARM64 | [veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-unknown-linux-gnu.tar.gz) | Standard build (PHP-CGI) |
-            | macOS x86_64 | [veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz) | |
-            | macOS ARM64 | [veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz) | Apple Silicon |
-            | Windows x86_64 | [veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip](https://github.com/veloserve/veloserve/releases/download/${{ github.ref_name }}/veloserve-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip) | |
-            
+            | Linux x86_64 | `veloserve-*-x86_64-unknown-linux-gnu.tar.gz` | **cPanel/AlmaLinux/RHEL 9 compatible** (glibc 2.34+) |
+            | Linux x86_64 (PHP Embed) | `veloserve-*-x86_64-unknown-linux-gnu-php-embed.tar.gz` | Embedded PHP SAPI (requires libphp-embed) |
+            | Linux ARM64 | `veloserve-*-aarch64-unknown-linux-gnu.tar.gz` | Standard build |
+            | macOS x86_64 | `veloserve-*-x86_64-apple-darwin.tar.gz` | Intel |
+            | macOS ARM64 | `veloserve-*-aarch64-apple-darwin.tar.gz` | Apple Silicon |
+            | Windows x86_64 | `veloserve-*-x86_64-pc-windows-msvc.zip` | |
+
             ### PHP Modes
-            
-            - **Standard build**: Uses `php-cgi` for PHP execution (~500 req/s)
-            - **PHP Embed build**: Embeds PHP directly for maximum performance (~10,000 req/s)
-            
-            For PHP Embed, set `mode = "embed"` in your config and ensure `libphp-embed` is installed.
-            
-            ### Quick Start
-            
+
+            | Mode | Binary | How It Works | Best For |
+            |------|--------|-------------|----------|
+            | **CGI** (default) | `veloserve` | Spawns `php-cgi` per request, auto-discovers EA-PHP | Quick setup, development |
+            | **vephp** | `vephp` | Persistent PHP worker via Unix socket (like `lsphp`) | Production, cPanel |
+            | **Embed** | `veloserve` (php-embed build) | PHP linked directly via FFI | Maximum performance |
+
+            ### cPanel Quick Start
+
             ```bash
-            # After installation
-            veloserve --help
-            
-            # Start server
+            # Standard binary auto-discovers EA-PHP:
+            #   /opt/cpanel/ea-php83/root/usr/bin/php-cgi
             veloserve --config /etc/veloserve/veloserve.toml
             ```
-            
-            📖 **Documentation:** https://veloserve.io
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

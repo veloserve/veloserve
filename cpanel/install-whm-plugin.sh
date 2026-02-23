@@ -47,7 +47,7 @@ cp -r whm/assets/* ${PLUGIN_DIR}/assets/ 2>/dev/null || true
 # Create cPanel App Registry entry
 cat > ${REGISTRY_DIR}/veloserve.conf << 'EOF'
 name=veloserve
-service=veloserve
+service=whostmgr
 user=root
 url=/cgi/veloserve/veloserve.cgi
 EOF
@@ -141,26 +141,47 @@ fi
 if [ ! -f "/etc/veloserve/veloserve.toml" ]; then
     echo "Creating default configuration..."
     
-    cat > /etc/veloserve/veloserve.toml << 'EOF'
+    # Detect EA-PHP version (newest available)
+    EA_PHP_CGI=""
+    for ver in 84 83 82 81 80; do
+        if [ -x "/opt/cpanel/ea-php${ver}/root/usr/bin/php-cgi" ]; then
+            EA_PHP_CGI="/opt/cpanel/ea-php${ver}/root/usr/bin/php-cgi"
+            echo -e "${GREEN}Detected EA-PHP: ${EA_PHP_CGI}${NC}"
+            break
+        fi
+    done
+
+    cat > /etc/veloserve/veloserve.toml << CONFEOF
 [server]
-listen = "0.0.0.0:80"
+listen = "0.0.0.0:8080"
 # listen_ssl = "0.0.0.0:443"
 workers = "auto"
 max_connections = 10000
 
 [php]
-handler = "socket"
-socket_path = "/run/veloserve/php.sock"
+enable = true
+mode = "cgi"
+version = "8.3"
+${EA_PHP_CGI:+binary_path = "${EA_PHP_CGI}"}
+workers = 16
+memory_limit = "512M"
+max_execution_time = 60
+error_log = "/var/log/veloserve/php-error.log"
+
+ini_settings = [
+    "opcache.enable=1",
+    "opcache.memory_consumption=256",
+    "opcache.max_accelerated_files=20000",
+    "opcache.revalidate_freq=2",
+]
 
 [cache]
 enable = true
 storage = "memory"
-memory_limit = "512M"
+memory_limit = "1G"
 default_ttl = 3600
-
-# Include cPanel virtual hosts
-include = "/etc/veloserve/vhosts/*.toml"
-EOF
+disk_path = "/var/cache/veloserve"
+CONFEOF
 
 fi
 

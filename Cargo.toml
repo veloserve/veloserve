@@ -82,7 +82,7 @@ name = "veloserve"
 path = "src/main.rs"
 
 [[bin]]
-name = "veloserve-php"
+name = "vephp"
 path = "src/php_worker/main.rs"
 
 # [[bench]]

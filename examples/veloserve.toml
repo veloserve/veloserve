@@ -27,11 +27,24 @@ max_body_size = "100M"
 # Enable PHP support
 enable = true
 
+# PHP execution mode: "cgi" (default), "socket" (vephp worker), or "embed"
+#   cgi    - Spawns php-cgi per request. Simple, portable.
+#   socket - Connects to persistent vephp worker via Unix socket (like lsphp).
+#            Start vephp first: vephp -s /run/veloserve/php.sock
+#   embed  - PHP linked directly via FFI (requires --features php-embed build).
+mode = "cgi"
+
 # PHP version (for auto-detection if binary_path not set)
 version = "8.3"
 
-# Path to PHP binary (required for most setups)
-binary_path = "/usr/bin/php"
+# Path to PHP binary. If not set, VeloServe auto-discovers:
+#   /opt/cpanel/ea-php83/root/usr/bin/php-cgi  (cPanel EA-PHP)
+#   /opt/alt/php83/usr/bin/php-cgi              (CloudLinux)
+#   /usr/bin/php-cgi                            (system)
+# binary_path = "/opt/cpanel/ea-php83/root/usr/bin/php-cgi"
+
+# vephp socket path (used when mode = "socket")
+# socket_path = "/run/veloserve/php.sock"
 
 # Number of PHP worker processes
 workers = 16
