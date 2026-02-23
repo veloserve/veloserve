@@ -77,10 +77,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/veloserve start --config /etc/veloserve/veloserve.toml
-ExecStop=/usr/local/bin/veloserve stop
-ExecReload=/usr/local/bin/veloserve reload
-PIDFile=/run/veloserve.pid
+ExecStart=/usr/local/bin/veloserve --config /etc/veloserve/veloserve.toml start --foreground
+ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
 RestartSec=5
 
@@ -108,7 +106,7 @@ PIDFILE=/run/veloserve.pid
 case "$1" in
     start)
         echo "Starting VeloServe..."
-        $VELOSERVE_BIN start --config $VELOSERVE_CONFIG
+        $VELOSERVE_BIN --config $VELOSERVE_CONFIG start --foreground &
         ;;
     stop)
         echo "Stopping VeloServe..."
