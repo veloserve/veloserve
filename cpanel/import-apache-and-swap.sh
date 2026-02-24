@@ -49,10 +49,12 @@ for arg in "$@"; do
     case "$arg" in
         --swap)        DO_SWAP=true ;;
         --config-only) CONFIG_ONLY=true ;;
+        --revert)      ;; # handled after config generation
         -h|--help)
-            echo "Usage: $0 [--swap] [--config-only]"
-            echo "  --swap        Stop Apache, start VeloServe on port 80/443"
+            echo "Usage: $0 [--swap] [--config-only] [--revert]"
+            echo "  --swap        Stop Apache, start VeloServe on 80/443, update chkservd"
             echo "  --config-only Only regenerate $VELOSERVE_CONFIG"
+            echo "  --revert      Stop VeloServe, re-enable Apache + chkservd monitoring"
             exit 0
             ;;
     esac
@@ -158,21 +160,76 @@ fi
 if [ "$DO_SWAP" = true ]; then
     echo ""
     echo -e "${YELLOW}Swapping: stopping Apache, starting VeloServe on 80/443 ...${NC}"
+
+    # 1. Disable Apache in chkservd (tailwatchd) so it won't be auto-restarted
+    CHKSERVD_CONF="/etc/chkserv.d/chkservd.conf"
+    if [ -f "$CHKSERVD_CONF" ]; then
+        sed -i 's/^httpd:1$/httpd:0/' "$CHKSERVD_CONF"
+        sed -i 's/^apache_php_fpm:1$/apache_php_fpm:0/' "$CHKSERVD_CONF"
+        echo -e "${GREEN}Disabled httpd in chkservd (tailwatchd won't restart Apache)${NC}"
+    fi
+
+    # 2. Add VeloServe to chkservd monitoring
+    if [ -d "/etc/chkserv.d" ]; then
+        cat > /etc/chkserv.d/veloserve << 'CHKEOF'
+service[veloserve]=80,GET / HTTP/1.0\r\nHost: localhost,HTTP/1..,systemctl restart veloserve
+CHKEOF
+        if ! grep -q '^veloserve:' "$CHKSERVD_CONF" 2>/dev/null; then
+            echo "veloserve:1" >> "$CHKSERVD_CONF"
+        else
+            sed -i 's/^veloserve:0$/veloserve:1/' "$CHKSERVD_CONF"
+        fi
+        echo -e "${GREEN}Added VeloServe to chkservd monitoring${NC}"
+    fi
+
+    # 3. Stop Apache and disable it from boot
     systemctl stop httpd 2>/dev/null || systemctl stop apache2 2>/dev/null || service httpd stop 2>/dev/null || true
     systemctl disable httpd 2>/dev/null || systemctl disable apache2 2>/dev/null || true
+
+    # 4. Tell cPanel to stop managing Apache restarts
+    if [ -x "/usr/local/cpanel/scripts/restartsrv_httpd" ]; then
+        /usr/local/cpanel/scripts/restartsrv_httpd stop 2>/dev/null || true
+    fi
+
+    # 5. Start VeloServe
     systemctl restart veloserve
     systemctl enable veloserve 2>/dev/null || true
+
+    # 6. Restart tailwatchd to pick up chkservd changes
+    systemctl restart tailwatchd 2>/dev/null || /usr/local/cpanel/scripts/restartsrv_tailwatchd 2>/dev/null || true
+    echo -e "${GREEN}Restarted tailwatchd to apply monitoring changes${NC}"
+
     sleep 2
     if systemctl is-active --quiet veloserve; then
         echo -e "${GREEN}VeloServe is now serving all accounts on port 80 and 443.${NC}"
+        echo -e "${GREEN}chkservd will monitor and auto-restart VeloServe if it goes down.${NC}"
     else
         echo -e "${RED}VeloServe failed to start! Reverting to Apache...${NC}"
+        sed -i 's/^httpd:0$/httpd:1/' "$CHKSERVD_CONF" 2>/dev/null
+        sed -i 's/^veloserve:1$/veloserve:0/' "$CHKSERVD_CONF" 2>/dev/null
         systemctl start httpd 2>/dev/null || systemctl start apache2 2>/dev/null || true
+        systemctl restart tailwatchd 2>/dev/null || true
         echo "Check logs: journalctl -u veloserve"
         exit 1
     fi
     echo ""
-    echo "To revert:  systemctl stop veloserve && systemctl start httpd"
+    echo "To revert to Apache:"
+    echo "  $0 --revert"
+    exit 0
+fi
+
+if [ "$1" = "--revert" ]; then
+    echo -e "${YELLOW}Reverting to Apache...${NC}"
+    CHKSERVD_CONF="/etc/chkserv.d/chkservd.conf"
+    systemctl stop veloserve 2>/dev/null || true
+    systemctl disable veloserve 2>/dev/null || true
+    sed -i 's/^httpd:0$/httpd:1/' "$CHKSERVD_CONF" 2>/dev/null
+    sed -i 's/^apache_php_fpm:0$/apache_php_fpm:1/' "$CHKSERVD_CONF" 2>/dev/null
+    sed -i 's/^veloserve:1$/veloserve:0/' "$CHKSERVD_CONF" 2>/dev/null
+    systemctl enable httpd 2>/dev/null || true
+    systemctl start httpd 2>/dev/null || true
+    systemctl restart tailwatchd 2>/dev/null || true
+    echo -e "${GREEN}Reverted to Apache. chkservd will monitor httpd again.${NC}"
     exit 0
 fi
 
@@ -180,7 +237,5 @@ echo ""
 echo "To swap Apache for VeloServe:"
 echo "  $0 --swap"
 echo ""
-echo "Or manually:"
-echo "  systemctl stop httpd"
-echo "  systemctl start veloserve"
-echo "  systemctl disable httpd && systemctl enable veloserve"
+echo "To revert back to Apache:"
+echo "  $0 --revert"
