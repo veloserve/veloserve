@@ -170,13 +170,14 @@ sub parse_cache_config {
 
 sub parse_ssl_config {
     my $config = read_config();
-    my %ssl;
+    my $cert = '';
+    my $key  = '';
     if ($config =~ /\[ssl\](.*?)(?=\n\[|\z)/s) {
         my $block = $1;
-        $ssl{cert} = $1 if $block =~ /cert\s*=\s*"([^"]+)"/;
-        $ssl{key}  = $1 if $block =~ /key\s*=\s*"([^"]+)"/;
+        $cert = $1 if $block =~ /cert\s*=\s*"([^"]+)"/;
+        $key  = $1 if $block =~ /key\s*=\s*"([^"]+)"/;
     }
-    return \%ssl;
+    return { cert => $cert, key => $key };
 }
 
 sub get_cert_info {
@@ -611,7 +612,7 @@ sub page_cache {
 ###############################################################################
 
 sub page_ssl {
-    my %global_ssl = parse_ssl_config();
+    my $global_ssl = parse_ssl_config();
     my @vhosts = parse_vhosts();
     my $hooks_registered = (-f '/usr/local/veloserve/hooks/veloserve-hook.sh') ? 1 : 0;
 
@@ -625,11 +626,11 @@ sub page_ssl {
   <div class="vs-card-header">Global SSL Certificate</div>
   <div class="vs-card-body">
 };
-    if ($global_ssl{cert}) {
-        my $info = get_cert_info($global_ssl{cert});
+    if ($global_ssl->{cert}) {
+        my $info = get_cert_info($global_ssl->{cert});
         print qq{
-    <div class="vs-info-row"><div class="key">Certificate</div><div class="val mono text-sm">} . html_escape($global_ssl{cert}) . qq{</div></div>
-    <div class="vs-info-row"><div class="key">Key</div><div class="val mono text-sm">} . html_escape($global_ssl{key} || '-') . qq{</div></div>
+    <div class="vs-info-row"><div class="key">Certificate</div><div class="val mono text-sm">} . html_escape($global_ssl->{cert}) . qq{</div></div>
+    <div class="vs-info-row"><div class="key">Key</div><div class="val mono text-sm">} . html_escape($global_ssl->{key} || '-') . qq{</div></div>
     <div class="vs-info-row"><div class="key">Subject</div><div class="val">} . html_escape($info->{subject} || '-') . qq{</div></div>
     <div class="vs-info-row"><div class="key">Issuer</div><div class="val">} . html_escape($info->{issuer} || '-') . qq{</div></div>
     <div class="vs-info-row"><div class="key">Expires</div><div class="val">} . html_escape($info->{expiry} || '-') . qq{</div></div>
