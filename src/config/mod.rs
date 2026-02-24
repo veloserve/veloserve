@@ -391,6 +391,14 @@ pub struct VirtualHostConfig {
     #[serde(default)]
     pub platform: Option<String>,
 
+    /// Per-vhost SSL certificate path (enables SNI for this domain)
+    #[serde(default)]
+    pub ssl_certificate: Option<String>,
+
+    /// Per-vhost SSL key path
+    #[serde(default)]
+    pub ssl_certificate_key: Option<String>,
+
     /// Virtual host specific cache settings
     #[serde(default)]
     pub cache: Option<VHostCacheConfig>,

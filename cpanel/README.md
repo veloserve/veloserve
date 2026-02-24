@@ -59,25 +59,82 @@ This will:
 - Set up required directories
 - Register with cPanel AppConfig
 
-### Step 3: Configure VeloServe
+### Step 3: Swap Apache → VeloServe (One Command)
 
-#### Import Apache Configuration
+The easiest way to replace Apache with VeloServe for all cPanel accounts:
 
 ```bash
-# Convert all Apache vhosts
-veloserve config convert-apache \
-  --input /etc/apache2/conf/httpd.conf \
-  --output /etc/veloserve/vhosts/imported.toml
-
-# Or import specific vhost
-veloserve config convert-apache \
-  --input /etc/apache2/conf.d/user_example.com.conf \
-  --output /etc/veloserve/vhosts/example.com.toml
+cd cpanel
+./import-apache-and-swap.sh --swap
 ```
 
-#### Create Main Configuration
+This single command will:
+1. Read `/usr/local/apache/conf/httpd.conf` (all cPanel VirtualHosts)
+2. Convert every VirtualHost to VeloServe config (including per-domain SSL certs)
+3. Auto-detect EA-PHP (newest version)
+4. Write `/etc/veloserve/veloserve.toml` with listen on port 80 **and** 443
+5. Stop Apache (`httpd`), start VeloServe, enable at boot
 
-Edit `/etc/veloserve/veloserve.toml`:
+To preview without swapping:
+
+```bash
+./import-apache-and-swap.sh              # generates config, shows instructions
+./import-apache-and-swap.sh --config-only # only writes config, does not touch services
+```
+
+To revert back to Apache:
+
+```bash
+systemctl stop veloserve && systemctl start httpd
+```
+
+#### Manual Configuration
+
+You can also convert Apache vhosts manually:
+
+```bash
+# Full conversion (server + vhosts)
+veloserve config convert-apache \
+  --input /usr/local/apache/conf/httpd.conf \
+  --output /etc/veloserve/veloserve.toml
+
+# Vhosts only (append to existing config)
+veloserve config convert-apache \
+  --input /usr/local/apache/conf/httpd.conf \
+  --output /etc/veloserve/vhosts.toml \
+  --vhosts-only
+```
+
+### SSL / Per-Account Certificates
+
+VeloServe supports per-domain SSL certificates, imported directly from Apache's
+`SSLCertificateFile` and `SSLCertificateKeyFile` directives.
+
+**How it works on cPanel:**
+
+- cPanel stores SSL certificates at paths like `/var/cpanel/ssl/installed/certs/<id>.crt`
+  and keys at `/var/cpanel/ssl/installed/keys/<id>.key`.
+- Apache references these in each `<VirtualHost *:443>` block.
+- When you run `import-apache-and-swap.sh`, VeloServe's converter reads those
+  paths and writes them into each `[[virtualhost]]` block:
+
+```toml
+[[virtualhost]]
+domain = "example.com"
+root = "/home/user/public_html"
+platform = "generic"
+ssl_certificate = "/var/cpanel/ssl/installed/certs/example_com.crt"
+ssl_certificate_key = "/var/cpanel/ssl/installed/keys/example_com.key"
+```
+
+- The global `[ssl]` section provides a fallback cert (usually the cPanel self-signed
+  cert at `/var/cpanel/ssl/cpanel/cpanel.pem`) for requests that don't match any
+  virtualhost domain.
+- When cPanel issues or renews an SSL certificate (AutoSSL / Let's Encrypt), the
+  cert files on disk are updated. Re-run `import-apache-and-swap.sh --config-only`
+  to pick up new domains, or `systemctl reload veloserve` if only certs changed.
+
+#### Example Main Configuration
 
 ```toml
 [server]
@@ -87,16 +144,20 @@ workers = "auto"
 max_connections = 10000
 
 [php]
-handler = "socket"
-socket_path = "/run/veloserve/php.sock"
+enable = true
+mode = "cgi"
+binary_path = "/opt/cpanel/ea-php83/root/usr/bin/php-cgi"
+workers = 16
+memory_limit = "512M"
+
+[ssl]
+cert = "/var/cpanel/ssl/cpanel/cpanel.pem"
+key = "/var/cpanel/ssl/cpanel/cpanel.pem"
 
 [cache]
 enable = true
 storage = "memory"
 memory_limit = "1G"
-
-# Include all vhost configs
-include = "/etc/veloserve/vhosts/*.toml"
 ```
 
 ### Step 4: Set Up PHP Worker Pools

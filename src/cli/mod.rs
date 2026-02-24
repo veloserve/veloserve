@@ -62,6 +62,9 @@ pub enum ConfigCommand {
         /// Strict mode: fail on unsupported directives
         #[arg(long)]
         strict: bool,
+        /// Only output [[virtualhost]] blocks (for appending to existing config)
+        #[arg(long)]
+        vhosts_only: bool,
     },
 }
 
@@ -228,7 +231,7 @@ default_ttl = 3600
 "#;
             println!("{}", default_config);
         }
-        ConfigCommand::ConvertApache { input, output, strict } => {
+        ConfigCommand::ConvertApache { input, output, strict, vhosts_only } => {
             use crate::apache_compat::{ApacheConfig, ApacheToVeloServeConverter};
             
             println!("Converting Apache configuration: {}", input);
@@ -243,7 +246,11 @@ default_ttl = 3600
             let converter = ApacheToVeloServeConverter::new()
                 .strict(strict);
             
-            let toml_output = converter.to_toml(&apache_config);
+            let toml_output = if vhosts_only {
+                converter.to_toml_vhosts_only(&apache_config)
+            } else {
+                converter.to_toml(&apache_config)
+            };
             
             // Write output
             if let Some(output_path) = output {
