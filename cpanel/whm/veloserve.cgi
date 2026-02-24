@@ -256,7 +256,7 @@ sub html_header {
 <body>
 <div class="vs-topbar">
   <div class="logo">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <svg viewBox="0 0 28 28" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="14" cy="14" r="12.5"/><path d="M9 8l5 12 5-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
     VeloServe
   </div>
   <nav>$nav_html</nav>
@@ -299,7 +299,7 @@ sub page_dashboard {
 
     print qq{
 <div class="vs-banner $banner_class">
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+  <svg width="24" height="24" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="14" cy="14" r="12.5"/><path d="M9 8l5 12 5-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
   $banner_text
 </div>
 

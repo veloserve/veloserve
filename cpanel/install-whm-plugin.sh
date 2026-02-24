@@ -56,6 +56,7 @@ name=veloserve
 service=whostmgr
 user=root
 url=/cgi/veloserve/veloserve.cgi
+acls=all
 EOF
 
 # Register with WHM
