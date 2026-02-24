@@ -40,9 +40,15 @@ mkdir -p ${PLUGIN_DIR}
 cp whm/veloserve.cgi ${PLUGIN_DIR}/
 chmod 755 ${PLUGIN_DIR}/veloserve.cgi
 
-# Install static assets (CSS, JS, images)
+# Install static assets (CSS, JS)
 mkdir -p ${PLUGIN_DIR}/assets
 cp -r whm/assets/* ${PLUGIN_DIR}/assets/ 2>/dev/null || true
+chmod -R 644 ${PLUGIN_DIR}/assets/* 2>/dev/null || true
+
+# Install swap script and hooks to veloserve dir
+mkdir -p /usr/local/veloserve/cpanel
+cp import-apache-and-swap.sh /usr/local/veloserve/cpanel/ 2>/dev/null || true
+chmod +x /usr/local/veloserve/cpanel/import-apache-and-swap.sh 2>/dev/null || true
 
 # Create cPanel App Registry entry
 cat > ${REGISTRY_DIR}/veloserve.conf << 'EOF'
