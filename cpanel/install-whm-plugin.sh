@@ -183,19 +183,28 @@ CONFEOF
 
 fi
 
+# Install cPanel hooks (auto-sync config on account/domain/SSL changes)
+if [ -f "hooks/install-hooks.sh" ]; then
+    echo "Installing cPanel hooks..."
+    bash hooks/install-hooks.sh 2>/dev/null && echo -e "${GREEN}cPanel hooks installed${NC}" || echo -e "${YELLOW}Hook registration skipped (non-fatal)${NC}"
+fi
+
+# Register VeloServe in WHM Service Manager (so WHM can restart it)
+if [ -d "/var/cpanel/service_autorestart" ]; then
+    echo "veloserve" > /var/cpanel/service_autorestart/veloserve
+    echo -e "${GREEN}Registered in WHM Service Manager${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "Next steps:"
-echo "1. Access WHM and navigate to: Plugins > VeloServe"
-echo "2. Configure virtual hosts from Apache"
-echo "3. Start VeloServe service"
+echo "1. Import Apache vhosts and swap:  ./import-apache-and-swap.sh --swap"
+echo "2. Access WHM: Plugins > VeloServe"
 echo ""
 echo "Commands:"
-echo "  service veloserve start    # Start server"
-echo "  service veloserve stop     # Stop server"
-echo "  service veloserve reload   # Reload config"
-echo ""
-echo "Or use systemd:"
 echo "  systemctl start veloserve"
 echo "  systemctl enable veloserve  # Auto-start on boot"
+echo ""
+echo "cPanel hooks are active: accounts, domains, and SSL changes"
+echo "will automatically update VeloServe config."
