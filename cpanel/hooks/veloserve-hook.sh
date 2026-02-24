@@ -57,12 +57,19 @@ add_vhost() {
 remove_vhost() {
     local domain="$1"
     [ -z "$domain" ] && return 1
-    python3 -c "
-import re
-with open('$VELOSERVE_CONFIG') as f: c=f.read()
-c=re.sub(r'\n*\[\[virtualhost\]\]\s*\n(?:[^\[]*\n)*?domain\s*=\s*\"$domain\"(?:\n(?!\[\[)[^\n]*)*','',c)
-with open('$VELOSERVE_CONFIG','w') as f: f.write(c)
-" 2>/dev/null
+    python3 - "$VELOSERVE_CONFIG" "$domain" << 'PYEOF'
+import sys, re
+cfg_file, target = sys.argv[1], sys.argv[2]
+with open(cfg_file) as f: content = f.read()
+# Split into blocks, remove the one matching the target domain
+blocks = re.split(r'(?=\[\[virtualhost\]\])', content)
+out = []
+for b in blocks:
+    if 'domain = "' + target + '"' in b:
+        continue
+    out.append(b)
+with open(cfg_file, 'w') as f: f.write(''.join(out))
+PYEOF
     log "Removed vhost: $domain"
 }
 
@@ -75,8 +82,19 @@ case "$EVENT" in
         [ -z "$H" ] && U=$(get ".get('data',{}).get('user','')") && H="/home/$U"
         add_vhost "$D" "${H}/public_html"; reload_veloserve ;;
     Accounts::Remove)
-        D=$(get ".get('data',{}).get('domain','')")
-        remove_vhost "$D"; reload_veloserve ;;
+        U=$(get ".get('data',{}).get('user','')")
+        if [ -n "$U" ]; then
+            # Remove all vhosts whose root is under /home/$U/
+            python3 -c "
+import re
+with open('$VELOSERVE_CONFIG') as f: c = f.read()
+# Remove any [[virtualhost]] block referencing /home/$U/
+c = re.sub(r'\n*\[\[virtualhost\]\][^\[]*?/home/$U/[^\[]*', '', c)
+with open('$VELOSERVE_CONFIG', 'w') as f: f.write(c)
+" 2>/dev/null
+            log "Removed all vhosts for user: $U"
+        fi
+        reload_veloserve ;;
     AddonDomain::addaddondomain|addaddondomain)
         D=$(get ".get('data',{}).get('args',{}).get('newdomain','')")
         R=$(get ".get('data',{}).get('args',{}).get('dir','')")
