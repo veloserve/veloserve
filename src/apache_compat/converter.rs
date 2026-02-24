@@ -73,10 +73,20 @@ impl ApacheToVeloServeConverter {
 
         let platform = self.detect_platform(&root);
 
+        let ssl_certificate = apache.ssl.as_ref()
+            .and_then(|s| s.certificate_file.as_ref())
+            .map(|p| p.to_string_lossy().to_string());
+
+        let ssl_certificate_key = apache.ssl.as_ref()
+            .and_then(|s| s.certificate_key_file.as_ref())
+            .map(|p| p.to_string_lossy().to_string());
+
         Ok(VirtualHostConfig {
             domain,
             root,
             platform: Some(platform),
+            ssl_certificate,
+            ssl_certificate_key,
             cache: None,
             index: vec!["index.php".to_string(), "index.html".to_string()],
             error_pages: std::collections::HashMap::new(),
@@ -139,16 +149,37 @@ impl ApacheToVeloServeConverter {
              \n"
         );
 
-        for vhost in &config.virtualhost {
+        output.push_str(&self.vhosts_toml_fragment(&config.virtualhost));
+        output
+    }
+
+    /// Output only [[virtualhost]] blocks for appending to an existing base config.
+    pub fn to_toml_vhosts_only(&self, apache: &ApacheConfig) -> String {
+        let config = self.convert(apache);
+        self.vhosts_toml_fragment(&config.virtualhost)
+    }
+
+    fn vhosts_toml_fragment(&self, vhosts: &[VirtualHostConfig]) -> String {
+        let mut output = String::new();
+        for vhost in vhosts {
             output.push_str(&format!(
                 "[[virtualhost]]\n\
                  domain = \"{}\"\n\
                  root = \"{}\"\n\
-                 platform = \"{}\"\n\n",
+                 platform = \"{}\"\n",
                 vhost.domain,
                 vhost.root,
                 vhost.platform.as_deref().unwrap_or("generic"),
             ));
+
+            if let Some(ref cert) = vhost.ssl_certificate {
+                output.push_str(&format!("ssl_certificate = \"{}\"\n", cert));
+            }
+            if let Some(ref key) = vhost.ssl_certificate_key {
+                output.push_str(&format!("ssl_certificate_key = \"{}\"\n", key));
+            }
+
+            output.push('\n');
 
             let platform = vhost.platform.as_deref().unwrap_or("");
             if platform == "wordpress" || platform == "magento2" {
@@ -160,7 +191,6 @@ impl ApacheToVeloServeConverter {
                 );
             }
         }
-
         output
     }
 }
