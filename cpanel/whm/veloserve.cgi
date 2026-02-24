@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/local/cpanel/3rdparty/bin/perl
 # VeloServe WHM Plugin - Full Management Interface
 use strict;
 use warnings;
