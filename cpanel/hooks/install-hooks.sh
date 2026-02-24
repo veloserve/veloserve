@@ -12,22 +12,25 @@ mkdir -p /usr/local/veloserve/hooks /var/log/veloserve
 cp "$(dirname "$0")/veloserve-hook.sh" "$HOOK_SCRIPT"
 chmod +x "$HOOK_SCRIPT"
 
-EVENTS=(
-    "Accounts::Create"
-    "Accounts::Remove"
-    "AddonDomain::addaddondomain"
-    "AddonDomain::deladdondomain"
-    "SubDomain::addsubdomain"
-    "SubDomain::delsubdomain"
-    "Park::park"
-    "Park::unpark"
-    "SSLStorage::add_ssl"
-    "SSLStorage::delete_ssl"
+# Format: "category event"
+HOOKS=(
+    "Whostmgr Accounts::Create"
+    "Whostmgr Accounts::Remove"
+    "Cpanel AddonDomain::addaddondomain"
+    "Cpanel AddonDomain::deladdondomain"
+    "Cpanel SubDomain::addsubdomain"
+    "Cpanel SubDomain::delsubdomain"
+    "Cpanel Park::park"
+    "Cpanel Park::unpark"
+    "Whostmgr SSLStorage::add_ssl"
+    "Whostmgr SSLStorage::delete_ssl"
 )
 
-for evt in "${EVENTS[@]}"; do
-    $MANAGE_HOOKS add script "$HOOK_SCRIPT" --event "$evt" --stage post 2>/dev/null || true
-    echo "Registered: $evt"
+for h in "${HOOKS[@]}"; do
+    cat=$( echo "$h" | awk '{print $1}')
+    evt=$(echo "$h" | awk '{print $2}')
+    $MANAGE_HOOKS add script "$HOOK_SCRIPT" --manual --category "$cat" --event "$evt" --stage post 2>/dev/null || true
+    echo "Registered: $cat::$evt"
 done
 
 echo "All hooks registered. VeloServe will auto-update config on cPanel changes."
