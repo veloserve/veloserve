@@ -5,6 +5,7 @@
 mod handler;
 mod router;
 mod static_files;
+pub mod tls;
 
 pub use handler::RequestHandler;
 pub use router::Router;
@@ -25,6 +26,7 @@ use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info};
 
 /// VeloServe HTTP Server
@@ -48,13 +50,12 @@ impl Server {
         }
     }
 
-    /// Run the server
+    /// Run the server (HTTP + optional HTTPS)
     pub async fn run(&self) -> Result<()> {
         let addr: SocketAddr = self.config.server.listen.parse()?;
 
         info!("Starting VeloServe on {}", addr);
 
-        // Start PHP worker pool
         if self.config.php.enable {
             info!(
                 "Starting PHP worker pool with {} workers",
@@ -63,14 +64,55 @@ impl Server {
             self.php_pool.start().await?;
         }
 
-        // Create TCP listener
-        let listener = TcpListener::bind(addr).await?;
+        let http_listener = TcpListener::bind(addr).await?;
         info!("Server listening on http://{}", addr);
 
-        // Accept connections
+        // Start HTTPS listener if configured and certs are available
+        let tls_handle = if tls::can_enable_tls(&self.config) {
+            let ssl_addr: SocketAddr = self.config.server.listen_ssl
+                .as_deref()
+                .unwrap_or("0.0.0.0:443")
+                .parse()?;
+
+            match tls::build_tls_config(&self.config) {
+                Ok(tls_config) => {
+                    let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+                    let tls_listener = TcpListener::bind(ssl_addr).await?;
+                    info!("Server listening on https://{}", ssl_addr);
+
+                    let config = self.config.clone();
+                    let cache = self.cache.clone();
+                    let php_pool = self.php_pool.clone();
+
+                    Some(tokio::spawn(async move {
+                        Self::accept_tls_loop(tls_listener, tls_acceptor, config, cache, php_pool).await;
+                    }))
+                }
+                Err(e) => {
+                    error!("Failed to configure TLS, HTTPS disabled: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // HTTP accept loop (runs forever)
+        self.accept_http_loop(http_listener).await;
+
+        if let Some(h) = tls_handle {
+            h.abort();
+        }
+        Ok(())
+    }
+
+    async fn accept_http_loop(&self, listener: TcpListener) {
         loop {
-            let (stream, remote_addr) = listener.accept().await?;
-            debug!("Accepted connection from {}", remote_addr);
+            let (stream, remote_addr) = match listener.accept().await {
+                Ok(conn) => conn,
+                Err(e) => { error!("HTTP accept error: {}", e); continue; }
+            };
+            debug!("Accepted HTTP connection from {}", remote_addr);
 
             let config = self.config.clone();
             let cache = self.cache.clone();
@@ -78,19 +120,15 @@ impl Server {
 
             tokio::spawn(async move {
                 let io = TokioIo::new(stream);
-
-                // Create service function
                 let service = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let config = config.clone();
                     let cache = cache.clone();
                     let php_pool = php_pool.clone();
-
                     async move {
-                        handle_request(req, remote_addr, config, cache, php_pool).await
+                        handle_request(req, remote_addr, config, cache, php_pool, false).await
                     }
                 });
 
-                // Use HTTP/1.1 by default (HTTP/2 requires ALPN negotiation with TLS)
                 let conn = http1::Builder::new()
                     .keep_alive(true)
                     .serve_connection(io, service);
@@ -104,7 +142,58 @@ impl Server {
         }
     }
 
+    async fn accept_tls_loop(
+        listener: TcpListener,
+        acceptor: TlsAcceptor,
+        config: Arc<Config>,
+        cache: Arc<CacheManager>,
+        php_pool: Arc<PhpPool>,
+    ) {
+        loop {
+            let (stream, remote_addr) = match listener.accept().await {
+                Ok(conn) => conn,
+                Err(e) => { error!("HTTPS accept error: {}", e); continue; }
+            };
+
+            let acceptor = acceptor.clone();
+            let config = config.clone();
+            let cache = cache.clone();
+            let php_pool = php_pool.clone();
+
+            tokio::spawn(async move {
+                let tls_stream = match acceptor.accept(stream).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!("TLS handshake failed from {}: {}", remote_addr, e);
+                        return;
+                    }
+                };
+
+                let io = TokioIo::new(tls_stream);
+                let service = service_fn(move |req: Request<hyper::body::Incoming>| {
+                    let config = config.clone();
+                    let cache = cache.clone();
+                    let php_pool = php_pool.clone();
+                    async move {
+                        handle_request(req, remote_addr, config, cache, php_pool, true).await
+                    }
+                });
+
+                let conn = http1::Builder::new()
+                    .keep_alive(true)
+                    .serve_connection(io, service);
+
+                if let Err(e) = conn.await {
+                    if !is_connection_closed_error(&e) {
+                        error!("TLS connection error: {}", e);
+                    }
+                }
+            });
+        }
+    }
+
     /// Run the server with HTTP/2 support (requires TLS)
+    #[allow(dead_code)]
     pub async fn run_h2(&self, listener: TcpListener) -> Result<()> {
         info!("Starting HTTP/2 server");
 
@@ -125,7 +214,7 @@ impl Server {
                     let php_pool = php_pool.clone();
 
                     async move {
-                        handle_request(req, remote_addr, config, cache, php_pool).await
+                        handle_request(req, remote_addr, config, cache, php_pool, true).await
                     }
                 });
 
@@ -165,6 +254,7 @@ async fn handle_request(
     config: Arc<Config>,
     cache: Arc<CacheManager>,
     php_pool: Arc<PhpPool>,
+    _is_https: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method = req.method().clone();
     let uri = req.uri().clone();
