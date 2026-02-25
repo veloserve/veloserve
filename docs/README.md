@@ -1,30 +1,14 @@
 # VeloServe Documentation
 
-Welcome to the VeloServe documentation! This guide covers everything you need to know to run, configure, and optimize VeloServe.
+> **Full documentation has moved to [docs.veloserve.io](https://docs.veloserve.io)**
 
-## Table of Contents
-
-- [Quick Start](quick-start.md)
-- [Installation](installation.md)
-- [Configuration Reference](configuration.md)
-- [PHP Integration](php.md)
-- [Caching](caching.md)
-- [Virtual Hosts](virtual-hosts.md)
-- [CLI Commands](cli.md)
-- [Environment Variables](environment-variables.md)
-- [WordPress Setup](wordpress.md)
-- [Magento 2 Setup](magento.md)
-- [Performance Tuning](performance.md)
-- [Troubleshooting](troubleshooting.md)
+The markdown files in this directory are kept for reference. For the most up-to-date and comprehensive documentation — including cPanel integration, standalone guides, and configuration reference — visit the documentation site.
 
 ## Quick Links
 
-| Topic | Description |
-|-------|-------------|
-| [Installation](installation.md) | How to install VeloServe on Linux, macOS, Windows |
-| [Configuration](configuration.md) | All config options explained |
-| [CLI Commands](cli.md) | Command-line interface reference |
-| [PHP Setup](php.md) | CGI mode vs SAPI mode |
+- [docs.veloserve.io](https://docs.veloserve.io) — Full documentation
+- [docs.veloserve.io/cpanel/overview/](https://docs.veloserve.io/cpanel/overview/) — cPanel integration
+- [docs.veloserve.io/getting-started/quick-start/](https://docs.veloserve.io/getting-started/quick-start/) — Quick start guide
 
 ## Support
 

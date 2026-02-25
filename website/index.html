@@ -36,7 +36,7 @@
                 <a href="#performance">Performance</a>
                 <a href="#install">Install</a>
                 <a href="#downloads">Downloads</a>
-                <a href="https://github.com/veloserve/veloserve/tree/main/docs" class="nav-link">Docs</a>
+                <a href="https://docs.veloserve.io" class="nav-link">Docs</a>
                 <a href="https://github.com/veloserve/veloserve" class="nav-github" target="_blank">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                         <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -73,7 +73,7 @@
         <div class="hero-content">
             <div class="badge">
                 <span class="badge-dot"></span>
-                v1.0.0 Released — Linux, macOS, Windows
+                v1.0.4 Released — Linux, macOS, Windows, cPanel
             </div>
             <h1>
                 <span class="gradient-text">Embedded PHP</span><br>
@@ -151,10 +151,10 @@
     <!-- Architecture Section -->
     <section class="architecture">
         <div class="container">
-            <h2 class="section-title">Two Ways to Run</h2>
-            <p class="section-subtitle">Choose the mode that fits your needs</p>
+            <h2 class="section-title">Three Ways to Deploy</h2>
+            <p class="section-subtitle">Choose the mode that fits your infrastructure</p>
             
-            <div class="modes-grid">
+            <div class="modes-grid modes-grid-3">
                 <div class="mode-card">
                     <div class="mode-icon">🔵</div>
                     <h3>CGI Mode</h3>
@@ -176,7 +176,7 @@
                 </div>
                 
                 <div class="mode-card featured">
-                    <div class="mode-badge">✅ Working</div>
+                    <div class="mode-badge">Fastest</div>
                     <div class="mode-icon">🚀</div>
                     <h3>SAPI Mode</h3>
                     <p class="mode-tagline">Maximum Performance</p>
@@ -194,6 +194,28 @@
                     </ul>
                     <div class="mode-code">
                         <code>cargo build --release --features php-embed</code>
+                    </div>
+                </div>
+
+                <div class="mode-card cpanel-card">
+                    <div class="mode-badge cpanel-badge">New</div>
+                    <div class="mode-icon">🖥️</div>
+                    <h3>cPanel Mode</h3>
+                    <p class="mode-tagline">Drop-in Apache Replacement</p>
+                    <div class="mode-diagram">
+                        <div class="diagram-box embedded">
+                            VeloServe
+                            <span class="diagram-inner">replaces Apache</span>
+                        </div>
+                    </div>
+                    <ul class="mode-features">
+                        <li>🔄 One-click Apache swap</li>
+                        <li>🖥️ WHM management UI</li>
+                        <li>🔒 AutoSSL integration</li>
+                        <li>⚡ Auto-sync hooks</li>
+                    </ul>
+                    <div class="mode-code">
+                        <code>./import-apache-and-swap.sh --swap</code>
                     </div>
                 </div>
             </div>
@@ -231,6 +253,11 @@
                     <div class="feature-icon">🔒</div>
                     <h3>HTTP/2 & TLS</h3>
                     <p>Modern protocols out of the box. HTTPS with automatic certificate handling.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🖥️</div>
+                    <h3>cPanel Integration</h3>
+                    <p>Drop-in Apache replacement with WHM plugin, AutoSSL, cPanel hooks, and tailwatchd monitoring.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">☁️</div>
@@ -294,6 +321,7 @@
             <div class="install-tabs">
                 <button class="tab active" data-tab="sapi">SAPI Mode (Fastest)</button>
                 <button class="tab" data-tab="cgi">CGI Mode (Simple)</button>
+                <button class="tab" data-tab="cpanel">cPanel (Apache Swap)</button>
                 <button class="tab" data-tab="cloud">Cloud (One-Click)</button>
             </div>
             
@@ -354,6 +382,36 @@ cargo build --release</code></pre>
                     </div>
                 </div>
                 
+                <div class="tab-content" id="cpanel">
+                    <div class="install-steps">
+                        <div class="step">
+                            <span class="step-num">1</span>
+                            <div class="step-content">
+                                <h4>Download Binary & Clone Scripts</h4>
+                                <pre><code>curl -LO https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-almalinux9.tar.gz
+tar -xzf veloserve-latest-x86_64-almalinux9.tar.gz
+sudo mv veloserve /usr/local/bin/
+git clone https://github.com/veloserve/veloserve.git /tmp/veloserve-repo</code></pre>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">2</span>
+                            <div class="step-content">
+                                <h4>Install WHM Plugin</h4>
+                                <pre><code>cd /tmp/veloserve-repo/cpanel
+./install-whm-plugin.sh</code></pre>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">3</span>
+                            <div class="step-content">
+                                <h4>Swap Apache for VeloServe</h4>
+                                <pre><code>./import-apache-and-swap.sh --swap</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="tab-content" id="cloud">
                     <div class="cloud-options">
                         <a href="https://ona.com/#https://github.com/veloserve/veloserve" class="cloud-btn ona" target="_blank">
@@ -391,6 +449,10 @@ cargo build --release</code></pre>
                         <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-unknown-linux-gnu-php-embed.tar.gz" class="download-link featured">
                             <span>x86_64 (PHP Embed) 🚀</span>
                             <span class="download-size">~4MB</span>
+                        </a>
+                        <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-x86_64-almalinux9.tar.gz" class="download-link">
+                            <span>x86_64 (AlmaLinux 9 / cPanel)</span>
+                            <span class="download-size">~3MB</span>
                         </a>
                         <a href="https://github.com/veloserve/veloserve/releases/latest/download/veloserve-latest-aarch64-unknown-linux-gnu.tar.gz" class="download-link">
                             <span>ARM64</span>
@@ -463,6 +525,7 @@ cargo build --release</code></pre>
                 <span class="logo-text">VeloServe</span>
             </div>
                 <div class="footer-links">
+                    <a href="https://docs.veloserve.io">Documentation</a>
                     <a href="https://github.com/veloserve/veloserve">GitHub</a>
                     <a href="https://github.com/veloserve/veloserve/issues">Issues</a>
                     <a href="https://github.com/veloserve/veloserve/blob/main/LICENSE">MIT License</a>
