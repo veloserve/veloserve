@@ -1,0 +1,104 @@
+site_name: VeloServe Documentation
+site_url: https://docs.veloserve.io
+site_description: Documentation for VeloServe — a high-performance web server written in Rust with embedded PHP support.
+repo_url: https://github.com/veloserve/veloserve
+repo_name: veloserve/veloserve
+edit_uri: edit/main/docs-site/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quick-start.md
+    - Installation: getting-started/installation.md
+  - Standalone Modes:
+    - CGI Mode: standalone/cgi-mode.md
+    - "SAPI Mode (Embedded PHP)": standalone/sapi-mode.md
+  - cPanel Integration:
+    - Overview: cpanel/overview.md
+    - Installation: cpanel/installation.md
+    - Apache Swap: cpanel/apache-swap.md
+    - WHM Plugin: cpanel/whm-plugin.md
+    - cPanel Hooks: cpanel/hooks.md
+    - "SSL & AutoSSL": cpanel/ssl-autossl.md
+    - CLI Commands: cpanel/cli-commands.md
+    - tailwatchd Integration: cpanel/tailwatchd.md
+  - Configuration:
+    - Reference: configuration/reference.md
+    - Virtual Hosts: configuration/virtual-hosts.md
+    - PHP: configuration/php.md
+    - Cache: configuration/cache.md
+    - "SSL / TLS": configuration/ssl-tls.md
+    - Security: configuration/security.md
+    - Logging: configuration/logging.md
+  - Guides:
+    - WordPress: guides/wordpress.md
+    - Magento 2: guides/magento2.md
+    - Performance Tuning: guides/performance.md
+  - Reference:
+    - CLI Commands: reference/cli.md
+    - Environment Variables: reference/environment-variables.md
+    - PHP Extensions: reference/php-extensions.md
+  - Troubleshooting: troubleshooting.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/veloserve/veloserve
+  generator: false

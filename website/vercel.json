@@ -4,7 +4,8 @@
   ],
   "redirects": [
     { "source": "/github", "destination": "https://github.com/veloserve/veloserve", "permanent": true },
-    { "source": "/docs", "destination": "https://github.com/veloserve/veloserve#readme", "permanent": true },
+    { "source": "/docs", "destination": "https://docs.veloserve.io", "permanent": true },
+    { "source": "/docs/:path*", "destination": "https://docs.veloserve.io/:path*", "permanent": true },
     { "source": "/try", "destination": "https://ona.com/#https://github.com/veloserve/veloserve", "permanent": true },
     { "source": "/download", "destination": "https://github.com/veloserve/veloserve/releases", "permanent": true }
   ],
