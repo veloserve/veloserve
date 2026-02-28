@@ -85,6 +85,7 @@ nav:
   - VeloPanel:
     - Overview: velopanel/overview.md
     - Installation: velopanel/installation.md
+    - UI Guide: velopanel/ui-guide.md
     - API Reference: velopanel/api-reference.md
   - Configuration:
     - Reference: configuration/reference.md
