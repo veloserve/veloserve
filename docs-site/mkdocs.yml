@@ -82,6 +82,10 @@ nav:
     - "SSL & AutoSSL": cpanel/ssl-autossl.md
     - CLI Commands: cpanel/cli-commands.md
     - tailwatchd Integration: cpanel/tailwatchd.md
+  - VeloPanel:
+    - Overview: velopanel/overview.md
+    - Installation: velopanel/installation.md
+    - API Reference: velopanel/api-reference.md
   - Configuration:
     - Reference: configuration/reference.md
     - Virtual Hosts: configuration/virtual-hosts.md
