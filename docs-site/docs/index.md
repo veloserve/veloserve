@@ -51,6 +51,7 @@ VeloServe can run as a standalone server in CGI or SAPI mode, or as a **drop-in 
 | **Rust Core** | Memory-safe, async I/O with Tokio and Hyper |
 | **Embedded PHP** | PHP runs inside VeloServe via FFI — no process spawning |
 | **Multi-Layer Cache** | Page, object, and static asset caching with auto-invalidation |
+| **Built-in CLI** | Cache purge/stats/warm plus config and service commands |
 | **HTTP/2 & TLS** | Modern protocols with SNI-based certificate resolution |
 | **cPanel Integration** | One-click Apache swap, WHM management UI, cPanel hook auto-sync |
 | **WordPress & Magento** | Platform-specific optimizations out of the box |
