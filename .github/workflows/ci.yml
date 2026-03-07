@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.93.1
 
 jobs:
   quality:
@@ -23,6 +24,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt, clippy
 
       - name: Rust cache
@@ -49,6 +51,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
