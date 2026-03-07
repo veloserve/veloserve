@@ -53,7 +53,7 @@ jobs:
               exit 0
             fi
 
-            rustfmt --check "${existing_files[@]}"
+            cargo fmt --all -- --check "${existing_files[@]}"
           else
             cargo fmt -- --check
           fi
