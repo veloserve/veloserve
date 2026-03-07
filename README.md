@@ -608,9 +608,13 @@ vary = ["Accept-Encoding", "Cookie"]
 
 ```bash
 # Cache management
-POST /api/v1/cache/purge
-POST /api/v1/cache/purge?tag=category_5
+GET  /api/v1/cache/config
 GET  /api/v1/cache/stats
+POST /api/v1/cache/purge
+POST /api/v1/cache/purge?domain=example.com
+POST /api/v1/cache/purge?path=/shop
+POST /api/v1/cache/purge?tag=category_5
+POST /api/v1/cache/warm?url=/&url=/shop
 
 # Server control
 GET  /api/v1/status
@@ -620,6 +624,8 @@ GET  /api/v1/workers
 # Analytics
 GET  /api/v1/metrics
 ```
+
+Page-cache responses include `X-Cache: HIT` or `X-Cache: MISS`. By default, only anonymous `GET/HEAD` HTML responses are cached, while requests with auth/session cookies or query strings are bypassed.
 
 ### CLI Tool
 
@@ -826,4 +832,3 @@ Contributions are welcome! Please read our contributing guidelines before submit
 <p align="center">
   Built with ❤️ in Rust
 </p>
-

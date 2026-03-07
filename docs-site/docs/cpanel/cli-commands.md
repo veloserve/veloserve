@@ -79,11 +79,30 @@ veloserve cache purge --all
 # Purge a specific domain
 veloserve cache purge --domain example.com
 
-# Purge by URL pattern
-veloserve cache purge --pattern "/blog/*"
+# Purge by tag
+veloserve cache purge --tag category_5
 
-# Warm cache from sitemap
-veloserve cache warm --sitemap https://example.com/sitemap.xml
+# Warm cache from URL list file
+veloserve cache warm --urls /root/cache-warm-urls.txt
+```
+
+## Cache API Operations
+
+```bash
+# Show runtime cache config + vhost rules
+curl -s http://127.0.0.1:8080/api/v1/cache/config | jq .
+
+# Show cache stats
+curl -s http://127.0.0.1:8080/api/v1/cache/stats | jq .
+
+# Purge all cache
+curl -s -X POST http://127.0.0.1:8080/api/v1/cache/purge | jq .
+
+# Purge by domain
+curl -s -X POST "http://127.0.0.1:8080/api/v1/cache/purge?domain=example.com" | jq .
+
+# Purge single page
+curl -s -X POST "http://127.0.0.1:8080/api/v1/cache/purge?domain=example.com&path=/shop" | jq .
 ```
 
 ## PHP Information

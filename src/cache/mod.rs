@@ -101,6 +101,11 @@ impl CacheManager {
 
     /// Get an entry from cache
     pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
+        self.get_with_metadata(key).await.map(|(data, _)| data)
+    }
+
+    /// Get an entry and its content-type from cache
+    pub async fn get_with_metadata(&self, key: &str) -> Option<(Vec<u8>, String)> {
         if !self.config.enable {
             return None;
         }
@@ -122,7 +127,7 @@ impl CacheManager {
 
             self.stats.hits.fetch_add(1, Ordering::Relaxed);
             debug!("Cache hit: {}", key);
-            return Some(entry.data.clone());
+            return Some((entry.data.clone(), entry.content_type.clone()));
         }
 
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
@@ -185,7 +190,9 @@ impl CacheManager {
                 .push(key.to_string());
         }
 
-        self.stats.size_bytes.fetch_add(data_size, Ordering::Relaxed);
+        self.stats
+            .size_bytes
+            .fetch_add(data_size, Ordering::Relaxed);
         debug!("Cache set: {} ({} bytes, ttl={:?})", key, data_size, ttl);
     }
 
@@ -218,6 +225,20 @@ impl CacheManager {
             for key in keys {
                 self.remove(&key).await;
             }
+        }
+    }
+
+    /// Purge all entries whose key starts with a prefix.
+    pub async fn purge_by_prefix(&self, prefix: &str) {
+        let keys: Vec<String> = self
+            .memory_cache
+            .iter()
+            .filter(|entry| entry.key().starts_with(prefix))
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        for key in keys {
+            self.remove(&key).await;
         }
     }
 
@@ -367,5 +388,63 @@ mod tests {
         assert!(cache.get("product_1").await.is_none());
         assert!(cache.get("product_2").await.is_some());
     }
-}
 
+    #[tokio::test]
+    async fn test_get_with_metadata() {
+        let config = CacheConfig::default();
+        let cache = CacheManager::new(&config);
+
+        cache
+            .set(
+                "page:example.com:/",
+                b"<html>ok</html>".to_vec(),
+                "text/html; charset=utf-8",
+                vec!["domain:example.com".to_string()],
+            )
+            .await;
+
+        let result = cache.get_with_metadata("page:example.com:/").await;
+        assert!(result.is_some());
+
+        let (data, content_type) = result.unwrap();
+        assert_eq!(data, b"<html>ok</html>".to_vec());
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[tokio::test]
+    async fn test_purge_by_prefix() {
+        let config = CacheConfig::default();
+        let cache = CacheManager::new(&config);
+
+        cache
+            .set(
+                "page:example.com:/",
+                b"home".to_vec(),
+                "text/html",
+                vec!["domain:example.com".to_string()],
+            )
+            .await;
+        cache
+            .set(
+                "page:example.com:/blog",
+                b"blog".to_vec(),
+                "text/html",
+                vec!["domain:example.com".to_string()],
+            )
+            .await;
+        cache
+            .set(
+                "page:other.com:/",
+                b"other".to_vec(),
+                "text/html",
+                vec!["domain:other.com".to_string()],
+            )
+            .await;
+
+        cache.purge_by_prefix("page:example.com:").await;
+
+        assert!(cache.get("page:example.com:/").await.is_none());
+        assert!(cache.get("page:example.com:/blog").await.is_none());
+        assert!(cache.get("page:other.com:/").await.is_some());
+    }
+}
