@@ -163,6 +163,55 @@ async fn magento_style_invalidation_contract_works() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn cache_warm_endpoint_processes_queue_and_populates_cache() -> Result<()> {
+    let server = TestServer::start().await?;
+    let connector = HttpConnector::new();
+    let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
+
+    let warm_payload = json!({
+        "urls": ["/catalog/a.html"],
+        "domain": "example.test",
+        "trigger": "manual"
+    });
+    let warm_response = post_json(
+        &client,
+        server.addr,
+        "/api/v1/cache/warm",
+        &warm_payload,
+        &[],
+    )
+    .await?;
+    assert_eq!(warm_response.status, StatusCode::OK);
+    assert!(
+        warm_response.body["outcome"]["queued"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 1
+    );
+
+    let mut warmed = false;
+    for _ in 0..30 {
+        let stats = get_json(&client, server.addr, "/api/v1/cache/stats").await?;
+        let processed = stats.body["warming"]["processed_total"]
+            .as_u64()
+            .unwrap_or(0);
+        let success = stats.body["warming"]["success_total"].as_u64().unwrap_or(0);
+        if processed >= 1 && success >= 1 {
+            warmed = true;
+            break;
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert!(warmed, "cache warm queue did not process target in time");
+
+    let page = get_path(&client, server.addr, "/catalog/a.html").await?;
+    assert_eq!(page.status, StatusCode::OK);
+    assert_eq!(page.cache_header.as_deref(), Some("HIT"));
+
+    Ok(())
+}
+
 struct HttpResult {
     status: StatusCode,
     body: Value,
@@ -239,6 +288,32 @@ async fn get_path(
         status,
         cache_header,
     })
+}
+
+async fn get_json(
+    client: &Client<HttpConnector, Full<Bytes>>,
+    addr: SocketAddr,
+    path: &str,
+) -> Result<HttpResult> {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(format!("http://{}{}", addr, path))
+        .header("Host", "example.test")
+        .body(Full::new(Bytes::new()))
+        .context("build json GET request")?;
+    let response = client
+        .request(request)
+        .await
+        .context("execute json GET request")?;
+    let status = response.status();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .context("read json GET body")?
+        .to_bytes();
+    let body = serde_json::from_slice(&body).context("parse json GET response")?;
+    Ok(HttpResult { status, body })
 }
 
 async fn warm_path(

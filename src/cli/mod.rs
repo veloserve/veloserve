@@ -3,7 +3,14 @@
 //! Command-line interface tools for VeloServe management.
 
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
 use clap::Subcommand;
+use http_body_util::{BodyExt, Full};
+use hyper::{Method, Request};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
+use serde_json::json;
 use std::fs;
 use std::path::Path;
 
@@ -37,6 +44,22 @@ pub enum CacheCommand {
         /// URL list file
         #[arg(long)]
         urls: Option<String>,
+
+        /// Individual URL to warm (can be repeated)
+        #[arg(long)]
+        url: Vec<String>,
+
+        /// Domain override for relative URLs
+        #[arg(long)]
+        domain: Option<String>,
+
+        /// Trigger deterministic warm strategy
+        #[arg(long)]
+        deterministic: bool,
+
+        /// Internal API base URL
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        api: String,
     },
 }
 
@@ -69,7 +92,7 @@ pub enum ConfigCommand {
 }
 
 /// Handle cache commands
-pub fn handle_cache_command(cmd: CacheCommand) -> Result<()> {
+pub async fn handle_cache_command(cmd: CacheCommand) -> Result<()> {
     match cmd {
         CacheCommand::Purge { all, domain, tag } => {
             if all {
@@ -97,13 +120,33 @@ pub fn handle_cache_command(cmd: CacheCommand) -> Result<()> {
             println!("Memory: N/A");
             println!("Hit Rate: N/A");
         }
-        CacheCommand::Warm { urls } => {
+        CacheCommand::Warm {
+            urls,
+            url,
+            domain,
+            deterministic,
+            api,
+        } => {
+            let mut targets = url;
             if let Some(file) = urls {
-                println!("Warming cache from URL list: {}", file);
-                warm_cache_from_file(&file)?;
-            } else {
-                println!("Please provide --urls file");
+                println!("Loading warm targets from file: {}", file);
+                targets.extend(read_warm_urls_from_file(&file)?);
             }
+
+            if !deterministic && targets.is_empty() {
+                println!("Please provide --url, --urls, or --deterministic");
+                return Ok(());
+            }
+
+            let strategy = if deterministic {
+                Some("deterministic")
+            } else {
+                None
+            };
+            let response =
+                trigger_cache_warm_api(&api, &targets, domain.as_deref(), strategy).await?;
+            println!("Warm request accepted:");
+            println!("{}", serde_json::to_string_pretty(&response)?);
         }
     }
     Ok(())
@@ -175,6 +218,12 @@ pub fn handle_config_command(config_path: &Path, cmd: ConfigCommand) -> Result<(
             println!("  storage: {:?}", config.cache.storage);
             println!("  memory_limit: {}", config.cache.memory_limit);
             println!("  default_ttl: {}s", config.cache.default_ttl);
+            println!("  warm_enabled: {}", config.cache.warm_enabled);
+            println!("  warm_schedule_secs: {}", config.cache.warm_schedule_secs);
+            println!(
+                "  warm_max_concurrency: {}",
+                config.cache.warm_max_concurrency
+            );
 
             if !config.virtualhost.is_empty() {
                 println!("\n[[virtualhost]]");
@@ -216,6 +265,15 @@ l2_enabled = true
 storage = "memory"
 memory_limit = "512M"
 default_ttl = 3600
+warm_enabled = true
+warm_schedule_secs = 0
+warm_max_queue_size = 2048
+warm_max_concurrency = 4
+warm_request_timeout_ms = 5000
+warm_max_retries = 2
+warm_retry_backoff_ms = 250
+warm_dedupe_window_secs = 120
+warm_batch_size = 64
 
 # [ssl]
 # cert = "/etc/veloserve/ssl/cert.pem"
@@ -387,21 +445,44 @@ fn is_process_running(pid: i32) -> bool {
         .unwrap_or(false)
 }
 
-/// Warm cache from URL list file
-fn warm_cache_from_file(file_path: &str) -> Result<()> {
+fn read_warm_urls_from_file(file_path: &str) -> Result<Vec<String>> {
     let contents = fs::read_to_string(file_path)?;
-    let urls: Vec<&str> = contents
+    Ok(contents
         .lines()
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .collect();
+        .map(|line| line.trim().to_string())
+        .collect())
+}
 
-    println!("Found {} URLs to warm", urls.len());
+async fn trigger_cache_warm_api(
+    api_base: &str,
+    urls: &[String],
+    domain: Option<&str>,
+    strategy: Option<&str>,
+) -> Result<serde_json::Value> {
+    let endpoint = format!("{}/api/v1/cache/warm", api_base.trim_end_matches('/'));
+    let payload = json!({
+        "urls": urls,
+        "domain": domain,
+        "trigger": "manual",
+        "strategy": strategy
+    });
 
-    for url in urls {
-        println!("  Warming: {}", url);
-        // In production, make HTTP request to the URL
+    let connector = HttpConnector::new();
+    let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(endpoint)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(payload.to_string())))?;
+    let response = client.request(request).await?;
+    let status = response.status();
+    let bytes = response.into_body().collect().await?.to_bytes();
+    if !status.is_success() {
+        let text = String::from_utf8_lossy(&bytes);
+        return Err(anyhow!("warm API request failed ({}): {}", status, text));
     }
 
-    println!("Cache warming complete.");
-    Ok(())
+    let parsed = serde_json::from_slice(&bytes)?;
+    Ok(parsed)
 }

@@ -539,6 +539,9 @@ enable = true
 storage = "memory"  # memory, redis, disk
 memory_limit = "2G"
 default_ttl = 3600
+warm_enabled = true
+warm_schedule_secs = 300
+warm_max_concurrency = 4
 
 [ssl]
 cert = "/etc/veloserve/ssl/cert.pem"
@@ -615,6 +618,7 @@ POST /api/v1/cache/purge?domain=example.com
 POST /api/v1/cache/purge?path=/shop
 POST /api/v1/cache/purge?tag=category_5
 POST /api/v1/cache/warm?url=/&url=/shop
+POST /api/v1/cache/warm
 
 # Server control
 GET  /api/v1/status
@@ -635,6 +639,9 @@ veloserve cache purge --all
 veloserve cache purge --domain=example.com
 veloserve cache purge --tag=product_123
 veloserve cache stats
+veloserve cache warm --url=https://example.com/ --url=https://example.com/shop
+veloserve cache warm --urls=warm-targets.txt --api=http://127.0.0.1:8080
+veloserve cache warm --deterministic --api=http://127.0.0.1:8080
 
 # Configuration
 veloserve config validate
@@ -743,7 +750,7 @@ docker run -d -p 80:80 -p 443:443 \
 - [x] Cache tagging and smart invalidation
 - [x] Magento 2 support (cache invalidation foundations)
 - [x] Redis integration
-- [ ] Cache warming/preloading
+- [x] Cache warming/preloading
 - [ ] WordPress plugin
 
 ### Phase 3: Production Ready

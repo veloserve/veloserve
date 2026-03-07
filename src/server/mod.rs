@@ -2,11 +2,13 @@
 //!
 //! Core HTTP/1.1 and HTTP/2 server implementation using Hyper and Tokio.
 
+mod cache_warmer;
 mod handler;
 mod router;
 mod static_files;
 pub mod tls;
 
+pub use cache_warmer::{CacheWarmer, WarmRequestPayload};
 pub use handler::RequestHandler;
 pub use router::Router;
 pub use static_files::StaticFileHandler;
@@ -33,6 +35,7 @@ use tracing::{debug, error, info};
 pub struct Server {
     config: Arc<Config>,
     cache: Arc<CacheManager>,
+    warmer: Arc<CacheWarmer>,
     php_pool: Arc<PhpPool>,
 }
 
@@ -41,11 +44,13 @@ impl Server {
     pub fn new(config: Config) -> Self {
         let config = Arc::new(config);
         let cache = Arc::new(CacheManager::new(&config.cache));
+        let warmer = CacheWarmer::new(config.clone());
         let php_pool = Arc::new(PhpPool::new(&config.php));
 
         Self {
             config,
             cache,
+            warmer,
             php_pool,
         }
     }
@@ -63,6 +68,7 @@ impl Server {
             );
             self.php_pool.start().await?;
         }
+        self.warmer.start();
 
         let http_listener = TcpListener::bind(addr).await?;
         info!("Server listening on http://{}", addr);
@@ -85,11 +91,19 @@ impl Server {
 
                     let config = self.config.clone();
                     let cache = self.cache.clone();
+                    let warmer = self.warmer.clone();
                     let php_pool = self.php_pool.clone();
 
                     Some(tokio::spawn(async move {
-                        Self::accept_tls_loop(tls_listener, tls_acceptor, config, cache, php_pool)
-                            .await;
+                        Self::accept_tls_loop(
+                            tls_listener,
+                            tls_acceptor,
+                            config,
+                            cache,
+                            warmer,
+                            php_pool,
+                        )
+                        .await;
                     }))
                 }
                 Err(e) => {
@@ -123,6 +137,7 @@ impl Server {
 
             let config = self.config.clone();
             let cache = self.cache.clone();
+            let warmer = self.warmer.clone();
             let php_pool = self.php_pool.clone();
 
             tokio::spawn(async move {
@@ -130,8 +145,12 @@ impl Server {
                 let service = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let config = config.clone();
                     let cache = cache.clone();
+                    let warmer = warmer.clone();
                     let php_pool = php_pool.clone();
-                    async move { handle_request(req, remote_addr, config, cache, php_pool, false).await }
+                    async move {
+                        handle_request(req, remote_addr, config, cache, warmer, php_pool, false)
+                            .await
+                    }
                 });
 
                 let conn = http1::Builder::new()
@@ -152,6 +171,7 @@ impl Server {
         acceptor: TlsAcceptor,
         config: Arc<Config>,
         cache: Arc<CacheManager>,
+        warmer: Arc<CacheWarmer>,
         php_pool: Arc<PhpPool>,
     ) {
         loop {
@@ -166,6 +186,7 @@ impl Server {
             let acceptor = acceptor.clone();
             let config = config.clone();
             let cache = cache.clone();
+            let warmer = warmer.clone();
             let php_pool = php_pool.clone();
 
             tokio::spawn(async move {
@@ -181,8 +202,12 @@ impl Server {
                 let service = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let config = config.clone();
                     let cache = cache.clone();
+                    let warmer = warmer.clone();
                     let php_pool = php_pool.clone();
-                    async move { handle_request(req, remote_addr, config, cache, php_pool, true).await }
+                    async move {
+                        handle_request(req, remote_addr, config, cache, warmer, php_pool, true)
+                            .await
+                    }
                 });
 
                 let conn = http1::Builder::new()
@@ -209,6 +234,7 @@ impl Server {
 
             let config = self.config.clone();
             let cache = self.cache.clone();
+            let warmer = self.warmer.clone();
             let php_pool = self.php_pool.clone();
 
             tokio::spawn(async move {
@@ -217,9 +243,13 @@ impl Server {
                 let service = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let config = config.clone();
                     let cache = cache.clone();
+                    let warmer = warmer.clone();
                     let php_pool = php_pool.clone();
 
-                    async move { handle_request(req, remote_addr, config, cache, php_pool, true).await }
+                    async move {
+                        handle_request(req, remote_addr, config, cache, warmer, php_pool, true)
+                            .await
+                    }
                 });
 
                 let conn = http2::Builder::new(TokioExecutor).serve_connection(io, service);
@@ -256,6 +286,7 @@ async fn handle_request(
     remote_addr: SocketAddr,
     config: Arc<Config>,
     cache: Arc<CacheManager>,
+    warmer: Arc<CacheWarmer>,
     php_pool: Arc<PhpPool>,
     _is_https: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
@@ -266,7 +297,7 @@ async fn handle_request(
     debug!("{} {} from {}", method, uri, remote_addr);
 
     // Create request handler
-    let handler = RequestHandler::new(config, cache, php_pool);
+    let handler = RequestHandler::new(config, cache, warmer, php_pool);
 
     // Handle the request
     let response = match handler.handle(req).await {

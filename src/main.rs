@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
             cli::show_status()?;
         }
         Some(Commands::Cache { command }) => {
-            cli::handle_cache_command(command)?;
+            cli::handle_cache_command(command).await?;
         }
         Some(Commands::Config { command }) => {
             cli::handle_config_command(&cli.config, command)?;

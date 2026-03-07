@@ -7,6 +7,7 @@ use crate::cache::{build_page_cache_key, build_page_cache_key_scoped, CacheManag
 use crate::config::Config;
 use crate::php::sapi::PhpResponse;
 use crate::php::PhpPool;
+use crate::server::cache_warmer::{CacheWarmer, WarmRequestPayload};
 use crate::server::static_files::StaticFileHandler;
 
 use anyhow::{anyhow, Result};
@@ -37,6 +38,7 @@ use tracing::{debug, info, warn};
 pub struct RequestHandler {
     config: Arc<Config>,
     cache: Arc<CacheManager>,
+    warmer: Arc<CacheWarmer>,
     php_pool: Arc<PhpPool>,
     static_handler: StaticFileHandler,
 }
@@ -156,12 +158,18 @@ struct InvalidationRequest {
 
 impl RequestHandler {
     /// Create a new request handler
-    pub fn new(config: Arc<Config>, cache: Arc<CacheManager>, php_pool: Arc<PhpPool>) -> Self {
+    pub fn new(
+        config: Arc<Config>,
+        cache: Arc<CacheManager>,
+        warmer: Arc<CacheWarmer>,
+        php_pool: Arc<PhpPool>,
+    ) -> Self {
         let static_handler = StaticFileHandler::new();
 
         Self {
             config,
             cache,
+            warmer,
             php_pool,
             static_handler,
         }
@@ -649,7 +657,7 @@ impl RequestHandler {
             return self.api_cache_invalidate(req).await;
         }
         if (method == Method::GET || method == Method::POST) && path == "/api/v1/cache/warm" {
-            return self.api_cache_warm(&req).await;
+            return self.api_cache_warm(req).await;
         }
         if method == Method::GET && path == "/api/v1/metrics" {
             return self.api_metrics();
@@ -676,8 +684,10 @@ impl RequestHandler {
 
     /// API: Cache statistics
     fn api_cache_stats(&self) -> Result<Response<Full<Bytes>>> {
-        let stats = self.cache.stats();
-        self.json_response(stats)
+        self.json_response(serde_json::json!({
+            "cache": self.cache.stats(),
+            "warming": self.warmer.stats_json()
+        }))
     }
 
     /// API: Cache configuration
@@ -900,37 +910,63 @@ impl RequestHandler {
         )
     }
 
-    /// API: Warm cache endpoints (best-effort)
+    /// API: Warm cache endpoints (queue-backed)
     async fn api_cache_warm(
         &self,
-        req: &Request<hyper::body::Incoming>,
+        req: Request<hyper::body::Incoming>,
     ) -> Result<Response<Full<Bytes>>> {
-        let query = req.uri().query().unwrap_or("");
-        let urls: Vec<String> = query
-            .split('&')
-            .filter_map(|part| part.strip_prefix("url="))
-            .map(|value| {
-                percent_encoding::percent_decode_str(value)
-                    .decode_utf8_lossy()
-                    .to_string()
-            })
-            .collect();
+        let method = req.method().clone();
+        let payload = if method == Method::GET {
+            let query = req.uri().query().unwrap_or("");
+            let urls: Vec<String> = query
+                .split('&')
+                .filter_map(|part| part.strip_prefix("url="))
+                .map(|value| {
+                    percent_encoding::percent_decode_str(value)
+                        .decode_utf8_lossy()
+                        .to_string()
+                })
+                .collect();
+            let domain = self.query_param(query, "domain");
+            let strategy = self.query_param(query, "strategy");
+            WarmRequestPayload {
+                urls,
+                domain,
+                trigger: Some("manual".to_string()),
+                strategy,
+            }
+        } else {
+            let body = req.into_body().collect().await?.to_bytes();
+            serde_json::from_slice::<WarmRequestPayload>(&body).map_err(|err| {
+                anyhow!(
+                    "invalid warm request payload: {}. expected JSON with urls/domain/trigger/strategy",
+                    err
+                )
+            })?
+        };
 
+        let outcome = self.warmer.enqueue_from_payload(payload).await?;
         self.json_response(serde_json::json!({
             "success": true,
-            "queued_urls": urls.len(),
-            "urls": urls,
-            "message": "Warmup accepted. Trigger requests to populate cache entries."
+            "outcome": outcome,
+            "warming": self.warmer.stats_json()
         }))
     }
 
     /// API: Metrics
     fn api_metrics(&self) -> Result<Response<Full<Bytes>>> {
+        let cache_stats = self.cache.stats();
+        let l1_hits = cache_stats["l1"]["hits"].as_u64().unwrap_or(0);
+        let l2_hits = cache_stats["l2"]["hits"].as_u64().unwrap_or(0);
+        let l1_misses = cache_stats["l1"]["misses"].as_u64().unwrap_or(0);
+        let l2_misses = cache_stats["l2"]["misses"].as_u64().unwrap_or(0);
         let metrics = serde_json::json!({
             "requests_total": 0,
-            "cache_hits": self.cache.stats()["hits"],
-            "cache_misses": self.cache.stats()["misses"],
+            "cache_hits": l1_hits + l2_hits,
+            "cache_misses": l1_misses + l2_misses,
+            "cache_hit_rate": cache_stats["hit_rate"],
             "php_available": self.php_pool.is_available(),
+            "cache_warming": self.warmer.stats_json(),
         });
 
         self.json_response(metrics)
