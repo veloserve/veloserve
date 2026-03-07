@@ -36,6 +36,19 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "Skipping format gate on pull_request; full format check runs on main."
             exit 0
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+              echo "No previous commit to diff against on push; skipping format gate."
+              exit 0
+            fi
+
+            mapfile -t rust_files < <(git diff --name-only "${{ github.event.before }}..${{ github.sha }}" | grep -E '\.rs$' || true)
+            if [[ ${#rust_files[@]} -eq 0 ]]; then
+              echo "No Rust files changed in this push."
+              exit 0
+            fi
+
+            cargo fmt -- --check "${rust_files[@]}"
           else
             cargo fmt -- --check
           fi
