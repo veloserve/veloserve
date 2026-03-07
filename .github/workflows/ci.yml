@@ -56,7 +56,7 @@ jobs:
               exit 0
             fi
 
-            cargo fmt --all -- --check "${existing_files[@]}"
+            cargo fmt -- --check "${existing_files[@]}"
           else
             cargo fmt -- --check
           fi
