@@ -267,14 +267,18 @@ impl CacheManager {
                     warn!("L2 redis backend is not implemented yet; disabling L2");
                     None
                 }
-                CacheStorage::Memory | CacheStorage::Disk => match DiskCacheLayer::new(&config.disk_path)
-                {
-                    Ok(layer) => Some(Box::new(layer) as Box<dyn PersistentCacheLayer>),
-                    Err(err) => {
-                        warn!("Failed to initialize L2 disk cache at {}: {}", config.disk_path, err);
-                        None
+                CacheStorage::Memory | CacheStorage::Disk => {
+                    match DiskCacheLayer::new(&config.disk_path) {
+                        Ok(layer) => Some(Box::new(layer) as Box<dyn PersistentCacheLayer>),
+                        Err(err) => {
+                            warn!(
+                                "Failed to initialize L2 disk cache at {}: {}",
+                                config.disk_path, err
+                            );
+                            None
+                        }
                     }
-                },
+                }
             }
         } else {
             None
@@ -761,7 +765,12 @@ mod tests {
         let cache = CacheManager::new(&config);
 
         cache
-            .set("page:example.com:/", b"payload".to_vec(), "text/html", vec![])
+            .set(
+                "page:example.com:/",
+                b"payload".to_vec(),
+                "text/html",
+                vec![],
+            )
             .await;
 
         let first = cache.get("page:example.com:/").await;
@@ -785,7 +794,12 @@ mod tests {
 
         let writer = CacheManager::new(&config);
         writer
-            .set("page:example.com:/l2", b"disk".to_vec(), "text/html", vec![])
+            .set(
+                "page:example.com:/l2",
+                b"disk".to_vec(),
+                "text/html",
+                vec![],
+            )
             .await;
 
         let reader = CacheManager::new(&config);
@@ -843,7 +857,10 @@ mod tests {
         cache
             .set("page:example.com:/l1", b"l1".to_vec(), "text/html", vec![])
             .await;
-        assert_eq!(cache.get("page:example.com:/l1").await, Some(b"l1".to_vec()));
+        assert_eq!(
+            cache.get("page:example.com:/l1").await,
+            Some(b"l1".to_vec())
+        );
 
         let mut l2_only = CacheConfig::default();
         l2_only.disk_path = dir.path().to_string_lossy().to_string();
@@ -852,7 +869,12 @@ mod tests {
 
         let cache = CacheManager::new(&l2_only);
         cache
-            .set("page:example.com:/l2-only", b"l2".to_vec(), "text/html", vec![])
+            .set(
+                "page:example.com:/l2-only",
+                b"l2".to_vec(),
+                "text/html",
+                vec![],
+            )
             .await;
         assert_eq!(
             cache.get("page:example.com:/l2-only").await,
