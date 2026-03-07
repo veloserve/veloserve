@@ -15,4 +15,3 @@ pub mod bindings {
 /// Re-export bindgen symbols so existing call sites keep working
 #[cfg(feature = "php-embed")]
 pub use bindings::*;
-

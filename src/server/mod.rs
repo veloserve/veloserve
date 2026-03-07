@@ -69,7 +69,10 @@ impl Server {
 
         // Start HTTPS listener if configured and certs are available
         let tls_handle = if tls::can_enable_tls(&self.config) {
-            let ssl_addr: SocketAddr = self.config.server.listen_ssl
+            let ssl_addr: SocketAddr = self
+                .config
+                .server
+                .listen_ssl
                 .as_deref()
                 .unwrap_or("0.0.0.0:443")
                 .parse()?;
@@ -85,7 +88,8 @@ impl Server {
                     let php_pool = self.php_pool.clone();
 
                     Some(tokio::spawn(async move {
-                        Self::accept_tls_loop(tls_listener, tls_acceptor, config, cache, php_pool).await;
+                        Self::accept_tls_loop(tls_listener, tls_acceptor, config, cache, php_pool)
+                            .await;
                     }))
                 }
                 Err(e) => {
@@ -110,7 +114,10 @@ impl Server {
         loop {
             let (stream, remote_addr) = match listener.accept().await {
                 Ok(conn) => conn,
-                Err(e) => { error!("HTTP accept error: {}", e); continue; }
+                Err(e) => {
+                    error!("HTTP accept error: {}", e);
+                    continue;
+                }
             };
             debug!("Accepted HTTP connection from {}", remote_addr);
 
@@ -124,9 +131,7 @@ impl Server {
                     let config = config.clone();
                     let cache = cache.clone();
                     let php_pool = php_pool.clone();
-                    async move {
-                        handle_request(req, remote_addr, config, cache, php_pool, false).await
-                    }
+                    async move { handle_request(req, remote_addr, config, cache, php_pool, false).await }
                 });
 
                 let conn = http1::Builder::new()
@@ -152,7 +157,10 @@ impl Server {
         loop {
             let (stream, remote_addr) = match listener.accept().await {
                 Ok(conn) => conn,
-                Err(e) => { error!("HTTPS accept error: {}", e); continue; }
+                Err(e) => {
+                    error!("HTTPS accept error: {}", e);
+                    continue;
+                }
             };
 
             let acceptor = acceptor.clone();
@@ -174,9 +182,7 @@ impl Server {
                     let config = config.clone();
                     let cache = cache.clone();
                     let php_pool = php_pool.clone();
-                    async move {
-                        handle_request(req, remote_addr, config, cache, php_pool, true).await
-                    }
+                    async move { handle_request(req, remote_addr, config, cache, php_pool, true).await }
                 });
 
                 let conn = http1::Builder::new()
@@ -213,13 +219,10 @@ impl Server {
                     let cache = cache.clone();
                     let php_pool = php_pool.clone();
 
-                    async move {
-                        handle_request(req, remote_addr, config, cache, php_pool, true).await
-                    }
+                    async move { handle_request(req, remote_addr, config, cache, php_pool, true).await }
                 });
 
-                let conn = http2::Builder::new(TokioExecutor)
-                    .serve_connection(io, service);
+                let conn = http2::Builder::new(TokioExecutor).serve_connection(io, service);
 
                 if let Err(e) = conn.await {
                     error!("HTTP/2 connection error: {}", e);
@@ -284,7 +287,11 @@ async fn handle_request(
 
     info!(
         "{} {} {} {} {:?}",
-        remote_addr, method, uri, status.as_u16(), duration
+        remote_addr,
+        method,
+        uri,
+        status.as_u16(),
+        duration
     );
 
     Ok(response)
@@ -305,4 +312,3 @@ where
 }
 
 use std::error::Error;
-

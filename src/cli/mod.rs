@@ -231,27 +231,34 @@ default_ttl = 3600
 "#;
             println!("{}", default_config);
         }
-        ConfigCommand::ConvertApache { input, output, strict, vhosts_only } => {
+        ConfigCommand::ConvertApache {
+            input,
+            output,
+            strict,
+            vhosts_only,
+        } => {
             use crate::apache_compat::{ApacheConfig, ApacheToVeloServeConverter};
-            
+
             println!("Converting Apache configuration: {}", input);
-            
+
             // Parse Apache config
             let apache_config = ApacheConfig::from_file(&input)
                 .map_err(|e| anyhow!("Failed to parse Apache config: {}", e))?;
-            
-            println!("✓ Parsed {} virtual hosts", apache_config.virtual_hosts.len());
-            
+
+            println!(
+                "✓ Parsed {} virtual hosts",
+                apache_config.virtual_hosts.len()
+            );
+
             // Convert to VeloServe
-            let converter = ApacheToVeloServeConverter::new()
-                .strict(strict);
-            
+            let converter = ApacheToVeloServeConverter::new().strict(strict);
+
             let toml_output = if vhosts_only {
                 converter.to_toml_vhosts_only(&apache_config)
             } else {
                 converter.to_toml(&apache_config)
             };
-            
+
             // Write output
             if let Some(output_path) = output {
                 fs::write(&output_path, &toml_output)?;
@@ -260,7 +267,7 @@ default_ttl = 3600
                 println!("\n=== Converted Configuration ===\n");
                 println!("{}", toml_output);
             }
-            
+
             // Summary
             println!("\n=== Summary ===");
             println!("Virtual Hosts: {}", apache_config.virtual_hosts.len());
@@ -379,7 +386,10 @@ fn is_process_running(pid: i32) -> bool {
 /// Warm cache from URL list file
 fn warm_cache_from_file(file_path: &str) -> Result<()> {
     let contents = fs::read_to_string(file_path)?;
-    let urls: Vec<&str> = contents.lines().filter(|l| !l.is_empty() && !l.starts_with('#')).collect();
+    let urls: Vec<&str> = contents
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
 
     println!("Found {} URLs to warm", urls.len());
 
@@ -391,4 +401,3 @@ fn warm_cache_from_file(file_path: &str) -> Result<()> {
     println!("Cache warming complete.");
     Ok(())
 }
-

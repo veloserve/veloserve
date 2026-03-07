@@ -14,11 +14,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(unix)]
 use std::thread;
 
-use crate::Config;
 #[cfg(unix)]
 use crate::pool::WorkerPool;
 #[cfg(unix)]
 use crate::protocol::{PhpRequest, PhpResponse, RequestType};
+use crate::Config;
 
 pub struct PhpWorkerServer {
     config: Config,
@@ -116,7 +116,8 @@ fn handle_connection(
     };
 
     if verbose {
-        println!("[vephp] Request: {:?} {}",
+        println!(
+            "[vephp] Request: {:?} {}",
             request.request_type,
             request.script_path.display()
         );
@@ -127,9 +128,7 @@ fn handle_connection(
             let mut pool = pool.lock().unwrap();
             pool.execute(&request)
         }
-        RequestType::HealthCheck => {
-            PhpResponse::ok("healthy", "")
-        }
+        RequestType::HealthCheck => PhpResponse::ok("healthy", ""),
         RequestType::Status => {
             let pool = pool.lock().unwrap();
             PhpResponse::ok("status", &pool.status_json())

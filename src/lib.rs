@@ -35,4 +35,3 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Server name for HTTP headers
 pub const SERVER_NAME: &str = "VeloServe";
-

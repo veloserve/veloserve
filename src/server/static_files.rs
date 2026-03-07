@@ -18,7 +18,7 @@ use tokio::io::AsyncReadExt;
 use tracing::debug;
 
 /// Handler for serving static files
-/// 
+///
 /// Implements static file serving similar to Nginx/Apache:
 /// - Automatic MIME type detection
 /// - ETag generation for cache validation  
@@ -280,7 +280,8 @@ impl StaticFileHandler {
             "no-cache, no-store, must-revalidate"
         }
         // JSON/API responses - short cache
-        else if mime_type == "application/json" || mime_type == "application/json; charset=utf-8" {
+        else if mime_type == "application/json" || mime_type == "application/json; charset=utf-8"
+        {
             "public, max-age=0, must-revalidate"
         }
         // Media files - moderate caching
@@ -303,7 +304,7 @@ impl Default for StaticFileHandler {
 /// Format a SystemTime as an HTTP date (RFC 7231)
 fn format_http_date(time: SystemTime) -> String {
     use chrono::{DateTime, Utc};
-    
+
     let datetime: DateTime<Utc> = time.into();
     datetime.format("%a, %d %b %Y %H:%M:%S GMT").to_string()
 }
@@ -311,17 +312,17 @@ fn format_http_date(time: SystemTime) -> String {
 /// Parse an HTTP date string
 fn parse_http_date(s: &str) -> Result<SystemTime> {
     use chrono::{DateTime, Utc};
-    
+
     // Try RFC 7231 format first
     if let Ok(dt) = DateTime::parse_from_str(s, "%a, %d %b %Y %H:%M:%S GMT") {
         return Ok(dt.with_timezone(&Utc).into());
     }
-    
+
     // Try other common formats
     if let Ok(dt) = DateTime::parse_from_rfc2822(s) {
         return Ok(dt.with_timezone(&Utc).into());
     }
-    
+
     Err(anyhow!("Invalid date format"))
 }
 
@@ -346,7 +347,10 @@ mod tests {
             "application/javascript; charset=utf-8"
         );
         assert_eq!(handler.guess_mime_type(Path::new("image.png")), "image/png");
-        assert_eq!(handler.guess_mime_type(Path::new("font.woff2")), "font/woff2");
+        assert_eq!(
+            handler.guess_mime_type(Path::new("font.woff2")),
+            "font/woff2"
+        );
         assert_eq!(
             handler.guess_mime_type(Path::new("unknown.xyz")),
             "application/octet-stream"
@@ -360,21 +364,23 @@ mod tests {
         // Static assets should have long cache
         assert!(handler.cache_control("image/png").contains("31536000"));
         assert!(handler.cache_control("font/woff2").contains("31536000"));
-        
+
         // HTML should not be cached
-        assert!(handler.cache_control("text/html; charset=utf-8").contains("no-cache"));
+        assert!(handler
+            .cache_control("text/html; charset=utf-8")
+            .contains("no-cache"));
     }
 
     #[test]
     fn test_etag_generation() {
         let handler = StaticFileHandler::new();
-        
+
         let etag1 = handler.generate_etag(Path::new("/test.html"), 1000, None);
         let etag2 = handler.generate_etag(Path::new("/test.html"), 1000, None);
-        
+
         // Same inputs should produce same ETag
         assert_eq!(etag1, etag2);
-        
+
         // Different size should produce different ETag
         let etag3 = handler.generate_etag(Path::new("/test.html"), 2000, None);
         assert_ne!(etag1, etag3);

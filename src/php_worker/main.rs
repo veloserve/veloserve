@@ -16,10 +16,10 @@ use std::env;
 use std::path::PathBuf;
 use std::process::exit;
 
-mod server;
-mod worker;
 mod pool;
 mod protocol;
+mod server;
+mod worker;
 
 use server::PhpWorkerServer;
 
@@ -36,7 +36,10 @@ fn print_usage() {
     eprintln!("  -s, --socket <PATH|ADDR>  Socket path (Unix) or address:port (TCP)");
     eprintln!("                            [default: {}]", DEFAULT_SOCKET);
     eprintln!("  -u, --user <USER>         Run as specific user (cPanel username)");
-    eprintln!("  -w, --workers <N>         Number of PHP workers [default: {}]", DEFAULT_WORKERS);
+    eprintln!(
+        "  -w, --workers <N>         Number of PHP workers [default: {}]",
+        DEFAULT_WORKERS
+    );
     eprintln!("  -m, --memory <LIMIT>      PHP memory limit [default: 256M]");
     eprintln!("  -t, --timeout <SECS>      Max execution time [default: 30]");
     eprintln!("  -c, --config <FILE>       PHP ini file path");
@@ -104,7 +107,10 @@ impl Config {
             if explicit.exists() {
                 return explicit.clone();
             }
-            eprintln!("[vephp] WARNING: Specified PHP binary not found: {:?}", explicit);
+            eprintln!(
+                "[vephp] WARNING: Specified PHP binary not found: {:?}",
+                explicit
+            );
         }
 
         let php_versions = ["84", "83", "82", "81", "80", "74"];
