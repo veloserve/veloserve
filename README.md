@@ -742,7 +742,7 @@ docker run -d -p 80:80 -p 443:443 \
 - [x] Multi-layer cache system
 - [x] Cache tagging and smart invalidation
 - [x] Magento 2 support (cache invalidation foundations)
-- [ ] Redis integration
+- [x] Redis integration
 - [ ] Cache warming/preloading
 - [ ] WordPress plugin
 
