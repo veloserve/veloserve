@@ -12,12 +12,12 @@ use crate::server::static_files::StaticFileHandler;
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
-use hyper::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
-use hyper::http::HeaderValue;
 use hyper::{Method, Request, Response, StatusCode};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use hyper::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
+use hyper::http::HeaderValue;
 use tracing::{debug, warn};
 
 /// Request handler for VeloServe
