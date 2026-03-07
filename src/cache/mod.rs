@@ -4,15 +4,20 @@
 
 use crate::config::{CacheConfig, CacheStorage};
 use dashmap::DashMap;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use lru::LruCache;
 use parking_lot::Mutex;
+use redis::{Client, Commands, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
+use std::io::{Read, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 #[derive(Clone)]
@@ -106,6 +111,10 @@ struct LayerStats {
     writes: AtomicU64,
     evictions: AtomicU64,
     stale: AtomicU64,
+    errors: AtomicU64,
+    fallbacks: AtomicU64,
+    ops: AtomicU64,
+    op_latency_micros: AtomicU64,
 }
 
 #[derive(Default)]
@@ -113,6 +122,23 @@ struct CacheStats {
     l1: LayerStats,
     l2: LayerStats,
     size_bytes: AtomicU64,
+}
+
+const REDIS_ENTRY_VERSION: u8 = 1;
+const REDIS_COMPRESSION_THRESHOLD_BYTES: usize = 1024;
+const REDIS_RETRY_ATTEMPTS: u32 = 2;
+const REDIS_TAG_INDEX_TTL_GRACE_SECS: u64 = 300;
+
+#[derive(Serialize, Deserialize)]
+struct RedisPersistedEntry {
+    version: u8,
+    content_type: String,
+    tags: Vec<String>,
+    created_at_epoch_secs: u64,
+    ttl_seconds: u64,
+    stale_after_seconds: u64,
+    compressed: bool,
+    data: Vec<u8>,
 }
 
 trait PersistentCacheLayer: Send + Sync {
@@ -244,6 +270,232 @@ impl PersistentCacheLayer for DiskCacheLayer {
     }
 }
 
+struct RedisCacheLayer {
+    client: Client,
+    pool: Mutex<Vec<Connection>>,
+    max_pool_size: usize,
+    namespace: String,
+}
+
+impl RedisCacheLayer {
+    fn new(redis_url: &str) -> std::io::Result<Self> {
+        let client = Client::open(redis_url).map_err(to_io_error)?;
+
+        Ok(Self {
+            client,
+            pool: Mutex::new(Vec::new()),
+            max_pool_size: 8,
+            namespace: "veloserve:v1".to_string(),
+        })
+    }
+
+    fn entry_key(&self, key: &str) -> String {
+        format!("{}:entry:{}", self.namespace, key)
+    }
+
+    fn tag_key(&self, tag: &str) -> String {
+        format!("{}:tag:{}", self.namespace, normalize_cache_key(tag))
+    }
+
+    fn key_index_key(&self) -> String {
+        format!("{}:keys", self.namespace)
+    }
+
+    fn acquire_connection(&self) -> std::io::Result<Connection> {
+        if let Some(conn) = self.pool.lock().pop() {
+            return Ok(conn);
+        }
+        self.client
+            .get_connection()
+            .map_err(|err| to_io_error(format!("redis connection failed: {}", err)))
+    }
+
+    fn release_connection(&self, conn: Connection) {
+        let mut pool = self.pool.lock();
+        if pool.len() < self.max_pool_size {
+            pool.push(conn);
+        }
+    }
+
+    fn with_conn<T, F>(&self, mut op: F) -> std::io::Result<T>
+    where
+        F: FnMut(&mut Connection) -> redis::RedisResult<T>,
+    {
+        for attempt in 0..=REDIS_RETRY_ATTEMPTS {
+            let mut conn = self.acquire_connection()?;
+            match op(&mut conn) {
+                Ok(value) => {
+                    self.release_connection(conn);
+                    return Ok(value);
+                }
+                Err(err) => {
+                    drop(conn);
+                    if attempt == REDIS_RETRY_ATTEMPTS {
+                        return Err(to_io_error(err));
+                    }
+                }
+            }
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "redis retry budget exhausted",
+        ))
+    }
+
+    fn serialize_entry(entry: &CacheEntry) -> std::io::Result<Vec<u8>> {
+        let (compressed, data) = if entry.data.len() >= REDIS_COMPRESSION_THRESHOLD_BYTES {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+            encoder.write_all(&entry.data)?;
+            let compressed = encoder.finish()?;
+            if compressed.len() < entry.data.len() {
+                (true, compressed)
+            } else {
+                (false, entry.data.clone())
+            }
+        } else {
+            (false, entry.data.clone())
+        };
+
+        let persisted = RedisPersistedEntry {
+            version: REDIS_ENTRY_VERSION,
+            content_type: entry.content_type.clone(),
+            tags: entry.tags.clone(),
+            created_at_epoch_secs: entry.created_at_epoch_secs,
+            ttl_seconds: entry.ttl.as_secs(),
+            stale_after_seconds: entry.stale_after.as_secs(),
+            compressed,
+            data,
+        };
+
+        bincode::serialize(&persisted)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))
+    }
+
+    fn deserialize_entry(raw: &[u8]) -> Option<CacheEntry> {
+        let persisted: RedisPersistedEntry = bincode::deserialize(raw).ok()?;
+        if persisted.version != REDIS_ENTRY_VERSION {
+            return None;
+        }
+
+        let data = if persisted.compressed {
+            let mut decoder = GzDecoder::new(persisted.data.as_slice());
+            let mut out = Vec::new();
+            decoder.read_to_end(&mut out).ok()?;
+            out
+        } else {
+            persisted.data
+        };
+
+        Some(CacheEntry {
+            data,
+            content_type: persisted.content_type,
+            tags: persisted.tags,
+            created_at_epoch_secs: persisted.created_at_epoch_secs,
+            ttl: Duration::from_secs(persisted.ttl_seconds),
+            stale_after: Duration::from_secs(persisted.stale_after_seconds),
+        })
+    }
+
+    fn remove_internal(&self, conn: &mut Connection, key: &str) -> redis::RedisResult<bool> {
+        let entry_key = self.entry_key(key);
+        let key_index_key = self.key_index_key();
+
+        let raw: Option<Vec<u8>> = conn.get(&entry_key)?;
+        let mut removed = false;
+
+        if let Some(raw) = raw {
+            if let Some(entry) = Self::deserialize_entry(&raw) {
+                for tag in entry.tags {
+                    let _: usize = conn.srem(self.tag_key(&tag), key)?;
+                }
+            }
+            let deleted: usize = conn.del(&entry_key)?;
+            removed = deleted > 0;
+        }
+
+        let _: usize = conn.srem(key_index_key, key)?;
+        Ok(removed)
+    }
+}
+
+impl PersistentCacheLayer for RedisCacheLayer {
+    fn get(&self, key: &str) -> Option<CacheEntry> {
+        let entry_key = self.entry_key(key);
+        let raw = self
+            .with_conn(|conn| conn.get::<_, Option<Vec<u8>>>(&entry_key))
+            .ok()?;
+        raw.and_then(|bytes| Self::deserialize_entry(&bytes))
+    }
+
+    fn set(&self, key: &str, entry: &CacheEntry) -> std::io::Result<()> {
+        let entry_key = self.entry_key(key);
+        let key_index_key = self.key_index_key();
+        let payload = Self::serialize_entry(entry)?;
+        let ttl_secs = entry.ttl.as_secs().max(1);
+        let tag_ttl = ttl_secs.saturating_add(REDIS_TAG_INDEX_TTL_GRACE_SECS);
+
+        self.with_conn(|conn| {
+            let _: () = conn.set_ex(&entry_key, payload.clone(), ttl_secs)?;
+            let _: usize = conn.sadd(&key_index_key, key)?;
+            for tag in &entry.tags {
+                let tag_key = self.tag_key(tag);
+                let _: usize = conn.sadd(&tag_key, key)?;
+                let _: bool = conn.expire(&tag_key, tag_ttl as i64)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn remove(&self, key: &str) -> std::io::Result<()> {
+        self.with_conn(|conn| self.remove_internal(conn, key).map(|_| ()))
+    }
+
+    fn purge_by_tag(&self, tag: &str) -> std::io::Result<usize> {
+        let tag_key = self.tag_key(tag);
+        self.with_conn(|conn| {
+            let keys: Vec<String> = conn.smembers(&tag_key)?;
+            let mut removed = 0usize;
+            for key in &keys {
+                if self.remove_internal(conn, key)? {
+                    removed += 1;
+                }
+            }
+            let _: usize = conn.del(&tag_key)?;
+            Ok(removed)
+        })
+    }
+
+    fn purge_by_prefix(&self, prefix: &str) -> std::io::Result<usize> {
+        let key_index_key = self.key_index_key();
+        self.with_conn(|conn| {
+            let keys: Vec<String> = conn.smembers(&key_index_key)?;
+            let mut removed = 0usize;
+            for key in keys {
+                if key.starts_with(prefix) && self.remove_internal(conn, &key)? {
+                    removed += 1;
+                }
+            }
+            Ok(removed)
+        })
+    }
+
+    fn purge_all(&self) -> std::io::Result<usize> {
+        let key_index_key = self.key_index_key();
+        self.with_conn(|conn| {
+            let keys: Vec<String> = conn.smembers(&key_index_key)?;
+            let mut removed = 0usize;
+            for key in keys {
+                if self.remove_internal(conn, &key)? {
+                    removed += 1;
+                }
+            }
+            let _: usize = conn.del(&key_index_key)?;
+            Ok(removed)
+        })
+    }
+}
+
 /// Cache manager
 pub struct CacheManager {
     l1_cache: DashMap<String, CacheEntry>,
@@ -264,8 +516,18 @@ impl CacheManager {
         let l2_cache = if config.l2_enabled {
             match config.storage {
                 CacheStorage::Redis => {
-                    warn!("L2 redis backend is not implemented yet; disabling L2");
-                    None
+                    if let Some(redis_url) = config.redis_url.as_deref() {
+                        match RedisCacheLayer::new(redis_url) {
+                            Ok(layer) => Some(Box::new(layer) as Box<dyn PersistentCacheLayer>),
+                            Err(err) => {
+                                warn!("Failed to initialize Redis cache layer: {}", err);
+                                None
+                            }
+                        }
+                    } else {
+                        warn!("Redis cache storage selected but cache.redis_url is not set; disabling L2");
+                        None
+                    }
                 }
                 CacheStorage::Memory | CacheStorage::Disk => {
                     match DiskCacheLayer::new(&config.disk_path) {
@@ -342,7 +604,9 @@ impl CacheManager {
         }
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             if let Some(entry) = l2.get(&key) {
+                self.record_l2_op(started, true);
                 if entry.is_expired() {
                     let _ = l2.remove(&key);
                     self.stats.l2.misses.fetch_add(1, Ordering::Relaxed);
@@ -365,6 +629,7 @@ impl CacheManager {
 
                 return Some((entry.data, entry.content_type));
             }
+            self.record_l2_op(started, true);
             self.stats.l2.misses.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -421,9 +686,12 @@ impl CacheManager {
         }
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             if let Err(err) = l2.set(&key, &entry) {
+                self.record_l2_op(started, false);
                 warn!("Failed to write L2 cache key {}: {}", key, err);
             } else {
+                self.record_l2_op(started, true);
                 self.stats.l2.writes.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -452,11 +720,16 @@ impl CacheManager {
         }
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             let existed_in_l2 = l2.get(&key).is_some();
             if let Err(err) = l2.remove(&key) {
+                self.record_l2_op(started, false);
                 warn!("Failed to remove L2 cache key {}: {}", key, err);
             } else if existed_in_l2 {
+                self.record_l2_op(started, true);
                 affected += 1;
+            } else {
+                self.record_l2_op(started, true);
             }
         }
 
@@ -482,11 +755,14 @@ impl CacheManager {
         }
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             match l2.purge_by_tag(tag) {
                 Ok(removed) => {
+                    self.record_l2_op(started, true);
                     affected += removed;
                 }
                 Err(err) => {
+                    self.record_l2_op(started, false);
                     warn!("Failed to purge L2 tag {}: {}", tag, err);
                 }
             }
@@ -518,11 +794,14 @@ impl CacheManager {
         }
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             match l2.purge_by_prefix(&prefix) {
                 Ok(removed) => {
+                    self.record_l2_op(started, true);
                     affected += removed;
                 }
                 Err(err) => {
+                    self.record_l2_op(started, false);
                     warn!("Failed to purge L2 key prefix {}: {}", prefix, err);
                 }
             }
@@ -547,8 +826,10 @@ impl CacheManager {
         self.stats.l1.evictions.fetch_add(1, Ordering::Relaxed);
 
         if let Some(l2) = &self.l2_cache {
+            let started = Instant::now();
             match l2.purge_all() {
                 Ok(removed) => {
+                    self.record_l2_op(started, true);
                     if removed > 0 {
                         self.stats
                             .l2
@@ -556,7 +837,10 @@ impl CacheManager {
                             .fetch_add(removed as u64, Ordering::Relaxed);
                     }
                 }
-                Err(err) => warn!("Failed to purge all L2 entries: {}", err),
+                Err(err) => {
+                    self.record_l2_op(started, false);
+                    warn!("Failed to purge all L2 entries: {}", err)
+                }
             }
         }
     }
@@ -587,10 +871,29 @@ impl CacheManager {
                 "misses": l2_misses,
                 "writes": self.stats.l2.writes.load(Ordering::Relaxed),
                 "evictions": self.stats.l2.evictions.load(Ordering::Relaxed),
-                "stale": self.stats.l2.stale.load(Ordering::Relaxed)
+                "stale": self.stats.l2.stale.load(Ordering::Relaxed),
+                "errors": self.stats.l2.errors.load(Ordering::Relaxed),
+                "fallbacks": self.stats.l2.fallbacks.load(Ordering::Relaxed),
+                "ops": self.stats.l2.ops.load(Ordering::Relaxed),
+                "latency_ms_avg": avg_latency_ms(
+                    self.stats.l2.op_latency_micros.load(Ordering::Relaxed),
+                    self.stats.l2.ops.load(Ordering::Relaxed)
+                )
             },
             "hit_rate": hit_rate(l1_hits + l2_hits, l1_misses + l2_misses),
         })
+    }
+
+    fn record_l2_op(&self, started: Instant, ok: bool) {
+        self.stats.l2.ops.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .l2
+            .op_latency_micros
+            .fetch_add(started.elapsed().as_micros() as u64, Ordering::Relaxed);
+        if !ok {
+            self.stats.l2.errors.fetch_add(1, Ordering::Relaxed);
+            self.stats.l2.fallbacks.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     async fn remove_l1(&self, key: &str) -> bool {
@@ -723,6 +1026,35 @@ pub fn build_page_cache_key(host: &str, path_and_query: &str) -> String {
     normalize_cache_key(&format!("page:{}:{}", normalized_host, path))
 }
 
+/// Build scoped cache key that avoids collisions across app/site/store/variant dimensions.
+pub fn build_page_cache_key_scoped(
+    host: &str,
+    site: Option<&str>,
+    store: Option<&str>,
+    variant: Option<&str>,
+    path_and_query: &str,
+) -> String {
+    let base = build_page_cache_key(host, path_and_query);
+    let site = normalize_cache_key_part(site.unwrap_or(host));
+    let store = normalize_cache_key_part(store.unwrap_or("default"));
+    let variant = normalize_cache_key_part(variant.unwrap_or("default"));
+    normalize_cache_key(&format!(
+        "{}:site:{}:store:{}:variant:{}",
+        base, site, store, variant
+    ))
+}
+
+fn normalize_cache_key_part(raw: &str) -> String {
+    let normalized = normalize_cache_key(raw);
+    if normalized.is_empty() {
+        "default".to_string()
+    } else if normalized.len() > 64 {
+        normalized[..64].to_string()
+    } else {
+        normalized
+    }
+}
+
 fn normalize_path(path: &str) -> String {
     let path = if path.is_empty() { "/" } else { path };
     let mut normalized = String::with_capacity(path.len());
@@ -756,12 +1088,24 @@ fn now_epoch_secs() -> u64 {
         .as_secs()
 }
 
+fn to_io_error(err: impl std::fmt::Display) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
+}
+
 fn hit_rate(hits: u64, misses: u64) -> f64 {
     let total = hits + misses;
     if total == 0 {
         0.0
     } else {
         (hits as f64 / total as f64) * 100.0
+    }
+}
+
+fn avg_latency_ms(total_micros: u64, ops: u64) -> f64 {
+    if ops == 0 {
+        0.0
+    } else {
+        (total_micros as f64 / ops as f64) / 1000.0
     }
 }
 
@@ -799,6 +1143,40 @@ mod tests {
             build_page_cache_key("Example.com:8080", "//shop///products/"),
             "page:example.com:/shop/products"
         );
+    }
+
+    #[test]
+    fn test_build_page_cache_key_scoped() {
+        assert_eq!(
+            build_page_cache_key_scoped(
+                "Example.com:8080",
+                Some("site-a"),
+                Some("store-en"),
+                Some("mobile"),
+                "/catalog/a.html"
+            ),
+            "page:example.com:/catalog/a.html:site:site-a:store:store-en:variant:mobile"
+        );
+    }
+
+    #[test]
+    fn test_redis_payload_roundtrip_with_compression() {
+        let entry = CacheEntry::new(
+            vec![b'x'; 4096],
+            "text/html".to_string(),
+            vec!["domain:example.test".to_string()],
+            Duration::from_secs(300),
+            Duration::from_secs(120),
+        );
+
+        let encoded = RedisCacheLayer::serialize_entry(&entry).unwrap();
+        let decoded = RedisCacheLayer::deserialize_entry(&encoded).unwrap();
+
+        assert_eq!(decoded.data, entry.data);
+        assert_eq!(decoded.content_type, entry.content_type);
+        assert_eq!(decoded.tags, entry.tags);
+        assert_eq!(decoded.ttl, entry.ttl);
+        assert_eq!(decoded.stale_after, entry.stale_after);
     }
 
     #[tokio::test]

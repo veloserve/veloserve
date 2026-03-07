@@ -145,6 +145,8 @@ memory_limit = "256M"
 
 # Redis connection (for redis backend)
 # redis_url = "redis://localhost:6379"
+# Redis keys are namespaced as:
+# veloserve:v1:entry:page:<host>:<path>:site:<site>:store:<store>:variant:<variant>
 
 # Default TTL in seconds
 default_ttl = 3600
