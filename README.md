@@ -751,7 +751,7 @@ docker run -d -p 80:80 -p 443:443 \
 - [x] Magento 2 support (cache invalidation foundations)
 - [x] Redis integration
 - [x] Cache warming/preloading
-- [ ] WordPress plugin
+- [x] WordPress plugin
 
 ### Phase 3: Production Ready
 - [ ] HTTP/3 (QUIC) support
