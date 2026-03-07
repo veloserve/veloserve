@@ -54,7 +54,7 @@ bytes = "1.5"
 futures = "0.3"
 parking_lot = "0.12"
 dashmap = "5.5"
-lru = "0.12"
+lru = "0.16.3"
 mime_guess = "2.0"
 percent-encoding = "2.3"
 chrono = { version = "0.4", features = ["serde"] }
@@ -98,4 +98,3 @@ strip = true
 [profile.dev]
 opt-level = 0
 debug = true
-
