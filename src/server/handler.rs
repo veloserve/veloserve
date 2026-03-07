@@ -11,14 +11,21 @@ use crate::server::static_files::StaticFileHandler;
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use dashmap::DashMap;
 use http_body_util::{BodyExt, Full};
 use hyper::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
-use hyper::http::HeaderValue;
+use hyper::http::{HeaderMap, HeaderValue};
 use hyper::{Method, Request, Response, StatusCode};
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use serde::Deserialize;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
-use tracing::{debug, warn};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, info, warn};
 
 /// Request handler for VeloServe
 ///
@@ -51,6 +58,100 @@ struct CacheContext {
     domain: String,
     path: String,
     ttl: Duration,
+}
+
+const INVALIDATION_DEDUPE_WINDOW_SECS: u64 = 15;
+const INVALIDATION_RATE_WINDOW_SECS: u64 = 60;
+const INVALIDATION_RATE_LIMIT: usize = 120;
+const INVALIDATION_MAX_TARGETS: usize = 128;
+const INVALIDATION_MAX_GROUPS: usize = 32;
+const INVALIDATION_MAX_TAGS_PER_GROUP: usize = 64;
+
+static INVALIDATION_GUARD: Lazy<InvalidationGuard> = Lazy::new(InvalidationGuard::default);
+
+#[derive(Default)]
+struct InvalidationGuard {
+    dedupe: DashMap<String, u64>,
+    recent_requests: Mutex<VecDeque<u64>>,
+}
+
+enum InvalidationGuardResult {
+    Accepted { deduped: bool },
+    RateLimited,
+}
+
+impl InvalidationGuard {
+    fn evaluate(&self, dedupe_key: &str) -> InvalidationGuardResult {
+        let now = now_epoch_secs();
+
+        {
+            let mut requests = self.recent_requests.lock();
+            while let Some(oldest) = requests.front().copied() {
+                if now.saturating_sub(oldest) >= INVALIDATION_RATE_WINDOW_SECS {
+                    requests.pop_front();
+                } else {
+                    break;
+                }
+            }
+            if requests.len() >= INVALIDATION_RATE_LIMIT {
+                return InvalidationGuardResult::RateLimited;
+            }
+            requests.push_back(now);
+        }
+
+        self.dedupe
+            .retain(|_, ts| now.saturating_sub(*ts) <= INVALIDATION_DEDUPE_WINDOW_SECS);
+
+        let deduped = self
+            .dedupe
+            .get(dedupe_key)
+            .map(|ts| now.saturating_sub(*ts) <= INVALIDATION_DEDUPE_WINDOW_SECS)
+            .unwrap_or(false);
+        self.dedupe.insert(dedupe_key.to_string(), now);
+
+        InvalidationGuardResult::Accepted { deduped }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum InvalidationScope {
+    Url,
+    Tag,
+    TagGroup,
+}
+
+impl InvalidationScope {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Url => "url",
+            Self::Tag => "tag",
+            Self::TagGroup => "tag_group",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InvalidationGroup {
+    name: String,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InvalidationRequest {
+    scope: InvalidationScope,
+    #[serde(default)]
+    domain: Option<String>,
+    #[serde(default)]
+    paths: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    groups: Vec<InvalidationGroup>,
+    #[serde(default)]
+    idempotency_key: Option<String>,
 }
 
 impl RequestHandler {
@@ -529,23 +630,35 @@ impl RequestHandler {
         &self,
         req: Request<hyper::body::Incoming>,
     ) -> Result<Response<Full<Bytes>>> {
-        let path = req.uri().path();
+        let path = req.uri().path().to_string();
         let method = req.method().clone();
 
-        match (method, path) {
-            (Method::GET, "/api/v1/status") => self.api_status(),
-            (Method::GET, "/api/v1/cache/stats") => self.api_cache_stats(),
-            (Method::GET, "/api/v1/cache/config") => self.api_cache_config(),
-            (Method::GET, "/api/v1/cache/purge") | (Method::POST, "/api/v1/cache/purge") => {
-                self.api_cache_purge(&req).await
-            }
-            (Method::GET, "/api/v1/cache/warm") | (Method::POST, "/api/v1/cache/warm") => {
-                self.api_cache_warm(&req).await
-            }
-            (Method::GET, "/api/v1/metrics") => self.api_metrics(),
-            (Method::GET, "/api/v1/workers") => self.api_workers(),
-            _ => self.not_found(),
+        if method == Method::GET && path == "/api/v1/status" {
+            return self.api_status();
         }
+        if method == Method::GET && path == "/api/v1/cache/stats" {
+            return self.api_cache_stats();
+        }
+        if method == Method::GET && path == "/api/v1/cache/config" {
+            return self.api_cache_config();
+        }
+        if (method == Method::GET || method == Method::POST) && path == "/api/v1/cache/purge" {
+            return self.api_cache_purge(&req).await;
+        }
+        if method == Method::POST && path == "/api/v1/cache/invalidate" {
+            return self.api_cache_invalidate(req).await;
+        }
+        if (method == Method::GET || method == Method::POST) && path == "/api/v1/cache/warm" {
+            return self.api_cache_warm(&req).await;
+        }
+        if method == Method::GET && path == "/api/v1/metrics" {
+            return self.api_metrics();
+        }
+        if method == Method::GET && path == "/api/v1/workers" {
+            return self.api_workers();
+        }
+
+        self.not_found()
     }
 
     /// API: Server status
@@ -641,6 +754,146 @@ impl RequestHandler {
             "success": true,
             "message": message
         }))
+    }
+
+    /// API: Magento-compatible cache invalidation contract
+    async fn api_cache_invalidate(
+        &self,
+        req: Request<hyper::body::Incoming>,
+    ) -> Result<Response<Full<Bytes>>> {
+        let start = Instant::now();
+        let headers = req.headers().clone();
+        let request_id = self
+            .request_id(&headers)
+            .unwrap_or_else(generate_request_id);
+        if let Err(err) = self.validate_invalidation_headers(&headers) {
+            return self.json_error_response(
+                StatusCode::BAD_REQUEST,
+                &err.to_string(),
+                Some(request_id),
+            );
+        }
+
+        let body = req.into_body().collect().await?.to_bytes();
+        let mut invalidation: InvalidationRequest = match serde_json::from_slice(&body) {
+            Ok(payload) => payload,
+            Err(err) => {
+                return self.json_error_response(
+                    StatusCode::BAD_REQUEST,
+                    &format!(
+                        "invalid invalidation payload: {}. expected JSON contract with scope/domain/paths/tags/groups",
+                        err
+                    ),
+                    Some(request_id),
+                )
+            }
+        };
+        if let Err(err) = self.normalize_and_validate_invalidation(&mut invalidation) {
+            return self.json_error_response(
+                StatusCode::BAD_REQUEST,
+                &err.to_string(),
+                Some(request_id),
+            );
+        }
+
+        let dedupe_key = self.dedupe_key(&invalidation, &headers);
+        let guard_result = INVALIDATION_GUARD.evaluate(&dedupe_key);
+        match guard_result {
+            InvalidationGuardResult::RateLimited => {
+                info!(
+                    request_id = %request_id,
+                    scope = %invalidation.scope.as_str(),
+                    outcome = "rate_limited",
+                    "cache invalidation rejected by rate guard"
+                );
+                return self.json_error_response(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "invalidation rate limit exceeded",
+                    Some(request_id),
+                );
+            }
+            InvalidationGuardResult::Accepted { deduped: true } => {
+                info!(
+                    request_id = %request_id,
+                    scope = %invalidation.scope.as_str(),
+                    outcome = "deduped",
+                    latency_ms = start.elapsed().as_millis() as u64,
+                    affected_keys = 0u64,
+                    "cache invalidation request deduped"
+                );
+                return self.json_response_with_status(
+                    StatusCode::ACCEPTED,
+                    serde_json::json!({
+                        "success": true,
+                        "request_id": request_id,
+                        "scope": invalidation.scope.as_str(),
+                        "deduped": true,
+                        "affected_keys": 0,
+                        "outcome": "deduped"
+                    }),
+                );
+            }
+            InvalidationGuardResult::Accepted { deduped: false } => {}
+        }
+
+        let mut affected = 0usize;
+        let scope = invalidation.scope.as_str().to_string();
+        match invalidation.scope {
+            InvalidationScope::Url => {
+                let domain = invalidation
+                    .domain
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("domain is required for url scope"))?;
+                for path in invalidation.paths {
+                    if path.ends_with('*') {
+                        let prefix = path.trim_end_matches('*').trim_end_matches('/');
+                        let prefix_path = if prefix.is_empty() { "/" } else { prefix };
+                        let prefix_key = build_page_cache_key(domain, prefix_path);
+                        affected += self.cache.purge_by_prefix_count(&prefix_key).await;
+                    } else {
+                        let key = build_page_cache_key(domain, &path);
+                        affected += self.cache.remove_with_count(&key).await;
+                    }
+                }
+            }
+            InvalidationScope::Tag => {
+                for tag in invalidation.tags {
+                    affected += self.cache.purge_by_tag_count(&tag).await;
+                }
+            }
+            InvalidationScope::TagGroup => {
+                let mut unique_tags = HashSet::new();
+                for group in invalidation.groups {
+                    for tag in group.tags {
+                        unique_tags.insert(tag);
+                    }
+                }
+                for tag in unique_tags {
+                    affected += self.cache.purge_by_tag_count(&tag).await;
+                }
+            }
+        }
+
+        info!(
+            request_id = %request_id,
+            scope = %scope,
+            outcome = "ok",
+            latency_ms = start.elapsed().as_millis() as u64,
+            affected_keys = affected as u64,
+            "cache invalidation request processed"
+        );
+
+        self.json_response_with_status(
+            StatusCode::OK,
+            serde_json::json!({
+                "success": true,
+                "request_id": request_id,
+                "scope": scope,
+                "deduped": false,
+                "affected_keys": affected,
+                "outcome": "ok"
+            }),
+        )
     }
 
     /// API: Warm cache endpoints (best-effort)
@@ -762,6 +1015,184 @@ impl RequestHandler {
                 None
             }
         })
+    }
+
+    fn request_id(&self, headers: &HeaderMap) -> Option<String> {
+        headers
+            .get("x-veloserve-request-id")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    fn validate_invalidation_headers(&self, headers: &HeaderMap) -> Result<()> {
+        let content_type = headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        if !content_type
+            .to_ascii_lowercase()
+            .starts_with("application/json")
+        {
+            return Err(anyhow!(
+                "invalid content-type for invalidation request (expected application/json)"
+            ));
+        }
+
+        let allowed_custom_headers = [
+            "x-veloserve-request-id",
+            "x-idempotency-key",
+            "x-magento-host",
+            "x-magento-tags-pattern",
+        ];
+
+        for (name, _) in headers {
+            let header_name = name.as_str().to_ascii_lowercase();
+            if header_name.starts_with("x-")
+                && !allowed_custom_headers.contains(&header_name.as_str())
+            {
+                return Err(anyhow!(
+                    "unsupported custom header in invalidation request: {}",
+                    header_name
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn normalize_and_validate_invalidation(&self, req: &mut InvalidationRequest) -> Result<()> {
+        if req.paths.len() > INVALIDATION_MAX_TARGETS || req.tags.len() > INVALIDATION_MAX_TARGETS {
+            return Err(anyhow!(
+                "invalidation fan-out exceeds {} targets",
+                INVALIDATION_MAX_TARGETS
+            ));
+        }
+        if req.groups.len() > INVALIDATION_MAX_GROUPS {
+            return Err(anyhow!(
+                "invalidation group count exceeds {}",
+                INVALIDATION_MAX_GROUPS
+            ));
+        }
+
+        if let Some(domain) = &req.domain {
+            req.domain = Some(normalize_domain(domain)?);
+        }
+        req.paths = req
+            .paths
+            .iter()
+            .map(|path| normalize_invalidation_path(path))
+            .collect::<Result<Vec<_>>>()?;
+        req.tags = req
+            .tags
+            .iter()
+            .map(|tag| normalize_tag(tag))
+            .collect::<Result<Vec<_>>>()?;
+        for group in &mut req.groups {
+            group.name = normalize_tag(&group.name)?;
+            if group.tags.len() > INVALIDATION_MAX_TAGS_PER_GROUP {
+                return Err(anyhow!(
+                    "group {} exceeds {} tags",
+                    group.name,
+                    INVALIDATION_MAX_TAGS_PER_GROUP
+                ));
+            }
+            group.tags = group
+                .tags
+                .iter()
+                .map(|tag| normalize_tag(tag))
+                .collect::<Result<Vec<_>>>()?;
+        }
+
+        match req.scope {
+            InvalidationScope::Url => {
+                if req.domain.is_none() {
+                    return Err(anyhow!("domain is required for url scope"));
+                }
+                if req.paths.is_empty() {
+                    return Err(anyhow!(
+                        "paths must contain at least one entry for url scope"
+                    ));
+                }
+                if !req.tags.is_empty() || !req.groups.is_empty() {
+                    return Err(anyhow!(
+                        "url scope only allows domain + paths fields in payload"
+                    ));
+                }
+            }
+            InvalidationScope::Tag => {
+                if req.tags.is_empty() {
+                    return Err(anyhow!(
+                        "tags must contain at least one entry for tag scope"
+                    ));
+                }
+                if req.domain.is_some() || !req.paths.is_empty() || !req.groups.is_empty() {
+                    return Err(anyhow!("tag scope only allows tags field in payload"));
+                }
+            }
+            InvalidationScope::TagGroup => {
+                if req.groups.is_empty() {
+                    return Err(anyhow!(
+                        "groups must contain at least one entry for tag_group scope"
+                    ));
+                }
+                if req.domain.is_some() || !req.paths.is_empty() || !req.tags.is_empty() {
+                    return Err(anyhow!(
+                        "tag_group scope only allows groups field in payload"
+                    ));
+                }
+                let total_tags = req
+                    .groups
+                    .iter()
+                    .map(|group| group.tags.len())
+                    .sum::<usize>();
+                if total_tags > INVALIDATION_MAX_TARGETS {
+                    return Err(anyhow!(
+                        "tag_group fan-out exceeds {} tags",
+                        INVALIDATION_MAX_TARGETS
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn dedupe_key(&self, req: &InvalidationRequest, headers: &HeaderMap) -> String {
+        let header_key = headers
+            .get("x-idempotency-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+
+        if let Some(key) = req
+            .idempotency_key
+            .as_ref()
+            .and_then(|value| {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+            .or(header_key)
+        {
+            return format!("idempotency:{}", key);
+        }
+
+        let mut hasher = DefaultHasher::new();
+        req.scope.as_str().hash(&mut hasher);
+        req.domain.hash(&mut hasher);
+        req.paths.hash(&mut hasher);
+        req.tags.hash(&mut hasher);
+        for group in &req.groups {
+            group.name.hash(&mut hasher);
+            group.tags.hash(&mut hasher);
+        }
+        format!("fingerprint:{:x}", hasher.finish())
     }
 
     fn cache_context(
@@ -1029,13 +1460,120 @@ impl RequestHandler {
     }
 
     fn json_response(&self, data: serde_json::Value) -> Result<Response<Full<Bytes>>> {
+        self.json_response_with_status(StatusCode::OK, data)
+    }
+
+    fn json_response_with_status(
+        &self,
+        status: StatusCode,
+        data: serde_json::Value,
+    ) -> Result<Response<Full<Bytes>>> {
         let body = serde_json::to_string_pretty(&data)?;
 
         Response::builder()
-            .status(StatusCode::OK)
+            .status(status)
             .header("Content-Type", "application/json")
             .header("Server", crate::SERVER_NAME)
             .body(Full::new(Bytes::from(body)))
             .map_err(|e| anyhow!("Failed to build response: {}", e))
     }
+
+    fn json_error_response(
+        &self,
+        status: StatusCode,
+        message: &str,
+        request_id: Option<String>,
+    ) -> Result<Response<Full<Bytes>>> {
+        let mut payload = serde_json::json!({
+            "success": false,
+            "error": message,
+        });
+        if let Some(request_id) = request_id {
+            payload["request_id"] = serde_json::Value::String(request_id);
+        }
+        self.json_response_with_status(status, payload)
+    }
+}
+
+fn normalize_domain(raw: &str) -> Result<String> {
+    let trimmed = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return Err(anyhow!("domain cannot be empty"));
+    }
+    let host = trimmed.split(':').next().unwrap_or(&trimmed).to_string();
+    if !host
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.')
+    {
+        return Err(anyhow!("domain contains invalid characters"));
+    }
+    Ok(host)
+}
+
+fn normalize_invalidation_path(raw: &str) -> Result<String> {
+    let mut path = raw.trim().to_string();
+    if path.is_empty() {
+        return Err(anyhow!("path cannot be empty"));
+    }
+    if !path.starts_with('/') {
+        path = format!("/{}", path);
+    }
+    let wildcard = path.ends_with('*');
+    let without_wildcard = if wildcard {
+        path.trim_end_matches('*').to_string()
+    } else {
+        path
+    };
+    let mut normalized = String::with_capacity(without_wildcard.len() + usize::from(wildcard));
+    let mut last_was_slash = false;
+    for ch in without_wildcard.chars() {
+        if ch == '/' {
+            if !last_was_slash {
+                normalized.push('/');
+            }
+            last_was_slash = true;
+        } else {
+            normalized.push(ch);
+            last_was_slash = false;
+        }
+    }
+
+    if normalized.is_empty() {
+        normalized.push('/');
+    } else if normalized != "/" {
+        normalized = normalized.trim_end_matches('/').to_string();
+    }
+    if wildcard {
+        normalized.push('*');
+    }
+    Ok(normalized)
+}
+
+fn normalize_tag(raw: &str) -> Result<String> {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return Err(anyhow!("tag cannot be empty"));
+    }
+    let mut normalized = String::with_capacity(trimmed.len());
+    for ch in trimmed.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, ':' | '_' | '-' | '/' | '.') {
+            normalized.push(ch);
+        } else if ch.is_whitespace() {
+            normalized.push('_');
+        } else {
+            return Err(anyhow!("tag contains unsupported characters"));
+        }
+    }
+    Ok(normalized)
+}
+
+fn now_epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn generate_request_id() -> String {
+    format!("inv-{}", now_epoch_secs())
 }

@@ -275,9 +275,9 @@ impl StaticFileHandler {
             // 1 year cache for static assets (like Nginx)
             "public, max-age=31536000, immutable"
         }
-        // HTML files - no caching (let application handle it)
+        // HTML files - allow revalidation while enabling server-side page cache.
         else if mime_type.starts_with("text/html") {
-            "no-cache, no-store, must-revalidate"
+            "public, max-age=0, must-revalidate"
         }
         // JSON/API responses - short cache
         else if mime_type == "application/json" || mime_type == "application/json; charset=utf-8"
@@ -365,10 +365,10 @@ mod tests {
         assert!(handler.cache_control("image/png").contains("31536000"));
         assert!(handler.cache_control("font/woff2").contains("31536000"));
 
-        // HTML should not be cached
-        assert!(handler
-            .cache_control("text/html; charset=utf-8")
-            .contains("no-cache"));
+        // HTML should require revalidation but avoid no-store.
+        let html_policy = handler.cache_control("text/html; charset=utf-8");
+        assert!(html_policy.contains("must-revalidate"));
+        assert!(!html_policy.contains("no-store"));
     }
 
     #[test]
