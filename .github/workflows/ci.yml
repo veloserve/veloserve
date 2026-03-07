@@ -32,10 +32,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Format check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}"
-            mapfile -t rust_files < <(git diff --name-only "origin/${{ github.event.pull_request.base.ref }}...HEAD" | grep -E '\.rs$' || true)
+            mapfile -t rust_files < <(
+              gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' | grep -E '\.rs$' || true
+            )
             if [[ ${#rust_files[@]} -eq 0 ]]; then
               echo "No Rust files changed in this PR."
               exit 0
