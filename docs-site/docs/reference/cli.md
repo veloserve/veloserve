@@ -114,8 +114,14 @@ veloserve cache purge --pattern "/blog/*"
 # Purge by tag
 veloserve cache purge --tag "post-123"
 
-# Warm cache from sitemap
-veloserve cache warm --sitemap https://example.com/sitemap.xml
+# Warm specific URLs
+veloserve cache warm --url https://example.com/
+
+# Warm from a file
+veloserve cache warm --urls warm-targets.txt --api http://127.0.0.1:8080
+
+# Trigger deterministic warm strategy
+veloserve cache warm --deterministic --api http://127.0.0.1:8080
 ```
 
 ### php

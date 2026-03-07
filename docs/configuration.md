@@ -151,6 +151,23 @@ memory_limit = "256M"
 # Default TTL in seconds
 default_ttl = 3600
 
+# Cache warming queue
+warm_enabled = true
+
+# Scheduled deterministic warming interval in seconds (0 disables scheduler)
+warm_schedule_secs = 0
+
+# Queue capacity and worker concurrency
+warm_max_queue_size = 2048
+warm_max_concurrency = 4
+
+# Request timeout + resilience for warm jobs
+warm_request_timeout_ms = 5000
+warm_max_retries = 2
+warm_retry_backoff_ms = 250
+warm_dedupe_window_secs = 120
+warm_batch_size = 64
+
 # Cache static assets
 cache_static = true
 

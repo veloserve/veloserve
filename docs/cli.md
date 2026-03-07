@@ -186,11 +186,12 @@ veloserve cache purge --tag "post-123"
 
 #### cache warm
 
-Warm up cache from URL list.
+Warm up cache via the internal `/api/v1/cache/warm` queue.
 
 ```bash
-veloserve cache warm --file urls.txt
-veloserve cache warm --sitemap https://example.com/sitemap.xml
+veloserve cache warm --url https://example.com/
+veloserve cache warm --urls warm-targets.txt --api http://127.0.0.1:8080
+veloserve cache warm --deterministic --api http://127.0.0.1:8080
 ```
 
 ### php
@@ -321,4 +322,3 @@ veloserve config show
 | `SIGINT` | Graceful shutdown (Ctrl+C) |
 | `SIGHUP` | Reload configuration |
 | `SIGUSR1` | Reopen log files |
-
