@@ -3,7 +3,7 @@
 //! Handles incoming HTTP requests similar to Nginx/Apache/LiteSpeed.
 //! Supports static files, PHP processing, and URL rewriting.
 
-use crate::cache::CacheManager;
+use crate::cache::{build_page_cache_key, CacheManager};
 use crate::config::Config;
 use crate::php::sapi::PhpResponse;
 use crate::php::PhpPool;
@@ -12,12 +12,12 @@ use crate::server::static_files::StaticFileHandler;
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
-use hyper::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
-use hyper::http::HeaderValue;
 use hyper::{Method, Request, Response, StatusCode};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use hyper::header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
+use hyper::http::HeaderValue;
 use tracing::{debug, warn};
 
 /// Request handler for VeloServe
@@ -596,6 +596,8 @@ impl RequestHandler {
         self.json_response(serde_json::json!({
             "cache": {
                 "enabled": self.config.cache.enable,
+                "l1_enabled": self.config.cache.l1_enabled,
+                "l2_enabled": self.config.cache.l2_enabled,
                 "storage": self.config.cache.storage,
                 "memory_limit": self.config.cache.memory_limit,
                 "default_ttl": self.config.cache.default_ttl,
@@ -621,7 +623,7 @@ impl RequestHandler {
             self.cache.remove(&key).await;
             format!("Purged cache key: {}", key)
         } else if let (Some(domain), Some(path)) = (domain.clone(), path) {
-            let key = format!("page:{}:{}", domain, path);
+            let key = build_page_cache_key(&domain, &path);
             self.cache.remove(&key).await;
             format!("Purged page cache entry: {}", key)
         } else if let Some(domain) = domain {
@@ -738,14 +740,13 @@ impl RequestHandler {
             .get("host")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("localhost");
-        let host = host.split(':').next().unwrap_or(host);
         let path = req
             .uri()
             .path_and_query()
             .map(|pq| pq.as_str())
             .unwrap_or(req.uri().path());
 
-        format!("page:{}:{}", host, path)
+        build_page_cache_key(host, path)
     }
 
     fn query_param(&self, query: &str, key: &str) -> Option<String> {
