@@ -3,7 +3,7 @@
 //! Handles incoming HTTP requests similar to Nginx/Apache/LiteSpeed.
 //! Supports static files, PHP processing, and URL rewriting.
 
-use crate::cache::{build_page_cache_key, CacheManager};
+use crate::cache::{build_page_cache_key, build_page_cache_key_scoped, CacheManager};
 use crate::config::Config;
 use crate::php::sapi::PhpResponse;
 use crate::php::PhpPool;
@@ -736,9 +736,11 @@ impl RequestHandler {
             self.cache.remove(&key).await;
             format!("Purged cache key: {}", key)
         } else if let (Some(domain), Some(path)) = (domain.clone(), path) {
-            let key = build_page_cache_key(&domain, &path);
-            self.cache.remove(&key).await;
-            format!("Purged page cache entry: {}", key)
+            let base_key = build_page_cache_key(&domain, &path);
+            let key_prefix = format!("{}:", base_key);
+            let mut purged = self.cache.purge_by_prefix_count(&key_prefix).await;
+            purged += self.cache.remove_with_count(&base_key).await;
+            format!("Purged page cache entries: {} ({})", key_prefix, purged)
         } else if let Some(domain) = domain {
             self.cache.purge_by_tag(&format!("domain:{}", domain)).await;
             format!("Purged cache for domain: {}", domain)
@@ -851,8 +853,10 @@ impl RequestHandler {
                         let prefix_key = build_page_cache_key(domain, prefix_path);
                         affected += self.cache.purge_by_prefix_count(&prefix_key).await;
                     } else {
-                        let key = build_page_cache_key(domain, &path);
-                        affected += self.cache.remove_with_count(&key).await;
+                        let base_key = build_page_cache_key(domain, &path);
+                        let key_prefix = format!("{}:", base_key);
+                        affected += self.cache.purge_by_prefix_count(&key_prefix).await;
+                        affected += self.cache.remove_with_count(&base_key).await;
                     }
                 }
             }
@@ -999,7 +1003,43 @@ impl RequestHandler {
             .map(|pq| pq.as_str())
             .unwrap_or(req.uri().path());
 
-        build_page_cache_key(host, path)
+        build_page_cache_key_scoped(
+            host,
+            self.cache_site(req).as_deref(),
+            self.cache_store(req).as_deref(),
+            self.cache_variant(req).as_deref(),
+            path,
+        )
+    }
+
+    fn cache_site(&self, req: &Request<hyper::body::Incoming>) -> Option<String> {
+        req.headers()
+            .get("x-veloserve-site")
+            .or_else(|| req.headers().get("x-site-id"))
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+    }
+
+    fn cache_store(&self, req: &Request<hyper::body::Incoming>) -> Option<String> {
+        req.headers()
+            .get("x-magento-store")
+            .or_else(|| req.headers().get("x-store-id"))
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+    }
+
+    fn cache_variant(&self, req: &Request<hyper::body::Incoming>) -> Option<String> {
+        req.headers()
+            .get("x-veloserve-cache-variant")
+            .or_else(|| req.headers().get("accept-language"))
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
     }
 
     fn query_param(&self, query: &str, key: &str) -> Option<String> {

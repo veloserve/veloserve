@@ -64,6 +64,8 @@ once_cell = "1.19"
 
 # Inter-process communication
 bincode = "1.3"
+flate2 = "1.0"
+redis = "0.25"
 
 # PHP process management (Unix only)
 [target.'cfg(unix)'.dependencies]
