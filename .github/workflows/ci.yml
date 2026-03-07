@@ -31,7 +31,31 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Format check
-        run: cargo fmt -- --check
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}"
+            mapfile -t rust_files < <(git diff --name-only FETCH_HEAD..HEAD | grep -E '\.rs$' || true)
+            if [[ ${#rust_files[@]} -eq 0 ]]; then
+              echo "No Rust files changed in this PR."
+              exit 0
+            fi
+
+            existing_files=()
+            for file in "${rust_files[@]}"; do
+              if [[ -f "$file" ]]; then
+                existing_files+=("$file")
+              fi
+            done
+
+            if [[ ${#existing_files[@]} -eq 0 ]]; then
+              echo "No existing Rust files to format-check."
+              exit 0
+            fi
+
+            rustfmt --check "${existing_files[@]}"
+          else
+            cargo fmt -- --check
+          fi
 
       - name: Clippy
         run: cargo clippy --all-targets
