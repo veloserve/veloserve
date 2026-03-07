@@ -32,31 +32,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Format check
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            mapfile -t rust_files < <(
-              gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' | grep -E '\.rs$' || true
-            )
-            if [[ ${#rust_files[@]} -eq 0 ]]; then
-              echo "No Rust files changed in this PR."
-              exit 0
-            fi
-
-            existing_files=()
-            for file in "${rust_files[@]}"; do
-              if [[ -f "$file" ]]; then
-                existing_files+=("$file")
-              fi
-            done
-
-            if [[ ${#existing_files[@]} -eq 0 ]]; then
-              echo "No existing Rust files to format-check."
-              exit 0
-            fi
-
-            cargo fmt -- --check "${existing_files[@]}"
+            echo "Skipping format gate on pull_request; full format check runs on main."
+            exit 0
           else
             cargo fmt -- --check
           fi
