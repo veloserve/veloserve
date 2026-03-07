@@ -13,13 +13,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-pub mod parser;
 pub mod converter;
 pub mod errors;
+pub mod parser;
 
-pub use parser::ApacheConfigParser;
 pub use converter::ApacheToVeloServeConverter;
 pub use errors::{ApacheParseError, ParseResult};
+pub use parser::ApacheConfigParser;
 
 /// Represents a parsed Apache VirtualHost configuration
 #[derive(Debug, Clone, Default)]
@@ -79,10 +79,7 @@ pub enum ApacheDirective {
         content: Vec<ApacheDirective>,
     },
     /// Simple key-value directive
-    Simple {
-        name: String,
-        value: String,
-    },
+    Simple { name: String, value: String },
     /// Comment line
     Comment(String),
 }
@@ -142,10 +139,10 @@ mod tests {
 
         let result = ApacheConfig::from_str(config);
         assert!(result.is_ok());
-        
+
         let apache_config = result.unwrap();
         assert_eq!(apache_config.virtual_hosts.len(), 1);
-        
+
         let vhost = &apache_config.virtual_hosts[0];
         assert!(vhost.server_names.contains(&"example.com".to_string()));
         assert!(vhost.server_names.contains(&"www.example.com".to_string()));
@@ -167,13 +164,16 @@ mod tests {
 
         let result = ApacheConfig::from_str(config);
         assert!(result.is_ok());
-        
+
         let apache_config = result.unwrap();
         let vhost = &apache_config.virtual_hosts[0];
-        
+
         assert!(vhost.ssl.is_some());
         let ssl = vhost.ssl.as_ref().unwrap();
         assert!(ssl.enabled);
-        assert_eq!(ssl.certificate_file, Some(PathBuf::from("/etc/ssl/certs/example.crt")));
+        assert_eq!(
+            ssl.certificate_file,
+            Some(PathBuf::from("/etc/ssl/certs/example.crt"))
+        );
     }
 }

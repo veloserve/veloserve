@@ -32,7 +32,8 @@ impl Router {
 
     /// Add a prefix match route
     pub fn add_prefix(&mut self, prefix: &str, handler: &str) {
-        self.prefixes.push((prefix.to_string(), handler.to_string()));
+        self.prefixes
+            .push((prefix.to_string(), handler.to_string()));
     }
 
     /// Match a path against routes
@@ -110,7 +111,10 @@ mod tests {
         router.add_prefix("/static/", "static_handler");
 
         assert_eq!(router.match_path("/api/v1/users"), Some("api_handler"));
-        assert_eq!(router.match_path("/static/css/style.css"), Some("static_handler"));
+        assert_eq!(
+            router.match_path("/static/css/style.css"),
+            Some("static_handler")
+        );
         assert_eq!(router.match_path("/other"), None);
     }
 
@@ -120,8 +124,10 @@ mod tests {
         router.add_exact("/api/v1/special", "special_handler");
         router.add_prefix("/api/v1/", "api_handler");
 
-        assert_eq!(router.match_path("/api/v1/special"), Some("special_handler"));
+        assert_eq!(
+            router.match_path("/api/v1/special"),
+            Some("special_handler")
+        );
         assert_eq!(router.match_path("/api/v1/users"), Some("api_handler"));
     }
 }
-

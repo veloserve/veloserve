@@ -483,4 +483,3 @@ mod tests {
         assert!(config.worker_threads() > 0);
     }
 }
-

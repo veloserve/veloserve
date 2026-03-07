@@ -51,12 +51,14 @@ impl ApacheToVeloServeConverter {
     }
 
     /// Convert single Apache VirtualHost to VeloServe VirtualHostConfig
-    fn convert_vhost(&self, apache: &ApacheVirtualHost) -> Result<VirtualHostConfig, ConversionError> {
-        let domain = apache.server_names.first()
-            .cloned()
-            .unwrap_or_default();
+    fn convert_vhost(
+        &self,
+        apache: &ApacheVirtualHost,
+    ) -> Result<VirtualHostConfig, ConversionError> {
+        let domain = apache.server_names.first().cloned().unwrap_or_default();
 
-        let root = apache.document_root
+        let root = apache
+            .document_root
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| {
@@ -73,11 +75,15 @@ impl ApacheToVeloServeConverter {
 
         let platform = self.detect_platform(&root);
 
-        let ssl_certificate = apache.ssl.as_ref()
+        let ssl_certificate = apache
+            .ssl
+            .as_ref()
             .and_then(|s| s.certificate_file.as_ref())
             .map(|p| p.to_string_lossy().to_string());
 
-        let ssl_certificate_key = apache.ssl.as_ref()
+        let ssl_certificate_key = apache
+            .ssl
+            .as_ref()
             .and_then(|s| s.certificate_key_file.as_ref())
             .map(|p| p.to_string_lossy().to_string());
 
@@ -136,7 +142,7 @@ impl ApacheToVeloServeConverter {
     /// Generate VeloServe TOML string from Apache config
     pub fn to_toml(&self, apache: &ApacheConfig) -> String {
         let config = self.convert(apache);
-        
+
         // In full implementation, this would serialize Config to TOML
         // For now, return a template
         let mut output = String::from(
@@ -146,7 +152,7 @@ impl ApacheToVeloServeConverter {
              [server]\n\
              listen = \"0.0.0.0:80\"\n\
              workers = \"auto\"\n\
-             \n"
+             \n",
         );
 
         output.push_str(&self.vhosts_toml_fragment(&config.virtualhost));
@@ -187,7 +193,7 @@ impl ApacheToVeloServeConverter {
                     "[virtualhost.cache]\n\
                      enable = true\n\
                      ttl = 3600\n\
-                     exclude = [\"/wp-admin/*\", \"/wp-login.php\"]\n\n"
+                     exclude = [\"/wp-admin/*\", \"/wp-login.php\"]\n\n",
                 );
             }
         }

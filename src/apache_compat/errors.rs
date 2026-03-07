@@ -11,16 +11,10 @@ pub type ParseResult<T> = Result<T, ApacheParseError>;
 #[derive(Debug)]
 pub enum ApacheParseError {
     /// I/O error reading file
-    IoError {
-        path: PathBuf,
-        source: io::Error,
-    },
+    IoError { path: PathBuf, source: io::Error },
 
     /// Syntax error at specific line
-    SyntaxError {
-        line: usize,
-        message: String,
-    },
+    SyntaxError { line: usize, message: String },
 
     /// Empty directive
     EmptyDirective,
@@ -45,26 +39,16 @@ pub enum ApacheParseError {
     },
 
     /// Missing required directive in VirtualHost
-    MissingRequired {
-        vhost: String,
-        directive: String,
-    },
+    MissingRequired { vhost: String, directive: String },
 
     /// Invalid path
-    InvalidPath {
-        directive: String,
-        path: String,
-    },
+    InvalidPath { directive: String, path: String },
 
     /// Circular include detected
-    CircularInclude {
-        path: PathBuf,
-    },
+    CircularInclude { path: PathBuf },
 
     /// Nested block too deep
-    NestingTooDeep {
-        max_depth: usize,
-    },
+    NestingTooDeep { max_depth: usize },
 }
 
 impl fmt::Display for ApacheParseError {
@@ -110,11 +94,7 @@ impl fmt::Display for ApacheParseError {
                 )
             }
             ApacheParseError::InvalidPath { directive, path } => {
-                write!(
-                    f,
-                    "Invalid path '{}' for directive '{}'",
-                    path, directive
-                )
+                write!(f, "Invalid path '{}' for directive '{}'", path, directive)
             }
             ApacheParseError::CircularInclude { path } => {
                 write!(f, "Circular include detected: {}", path.display())

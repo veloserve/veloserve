@@ -50,8 +50,8 @@ pub mod sapi;
 use crate::config::{PhpConfig, PhpMode};
 use crate::php::sapi::PhpResponse;
 use anyhow::{anyhow, Result};
-use hyper::Request;
 use hyper::http::request::Parts;
+use hyper::Request;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -137,7 +137,7 @@ impl PhpPool {
                 #[cfg(feature = "php-embed")]
                 {
                     let mut sapi = sapi::PhpSapi::new();
-                    
+
                     // Build embed configuration from PhpConfig
                     let embed_config = sapi::PhpEmbedConfig {
                         stack_limit: self.config.embed_stack_limit.clone(),
@@ -145,7 +145,7 @@ impl PhpPool {
                         display_errors: self.config.display_errors,
                         ini_settings: self.config.ini_settings.clone(),
                     };
-                    
+
                     match sapi.initialize(embed_config) {
                         Ok(_) => {
                             info!("PHP embed mode enabled");
@@ -243,7 +243,8 @@ impl PhpPool {
         script_name: &str,
         path_info: &str,
     ) -> Result<String> {
-        self.execute_with_body(script_path, req, doc_root, script_name, path_info, &[]).await
+        self.execute_with_body(script_path, req, doc_root, script_name, path_info, &[])
+            .await
     }
 
     /// Execute a PHP script with full CGI environment and POST body
@@ -269,11 +270,16 @@ impl PhpPool {
         }
 
         // Acquire semaphore permit (limits concurrent PHP processes)
-        let _permit = self.semaphore.acquire().await
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
             .map_err(|_| anyhow!("Failed to acquire PHP worker permit"))?;
 
         self.active_workers.fetch_add(1, Ordering::SeqCst);
-        let result = self.do_execute_with_body(script_path, req, doc_root, script_name, path_info, body).await;
+        let result = self
+            .do_execute_with_body(script_path, req, doc_root, script_name, path_info, body)
+            .await;
         self.active_workers.fetch_sub(1, Ordering::SeqCst);
 
         result
@@ -306,11 +312,23 @@ impl PhpPool {
         }
 
         // Acquire semaphore permit (limits concurrent PHP processes)
-        let _permit = self.semaphore.acquire().await
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
             .map_err(|_| anyhow!("Failed to acquire PHP worker permit"))?;
 
         self.active_workers.fetch_add(1, Ordering::SeqCst);
-        let result = self.do_execute_cgi(script_path, req_parts, doc_root, script_name, path_info, body).await;
+        let result = self
+            .do_execute_cgi(
+                script_path,
+                req_parts,
+                doc_root,
+                script_name,
+                path_info,
+                body,
+            )
+            .await;
         self.active_workers.fetch_sub(1, Ordering::SeqCst);
 
         result
@@ -324,7 +342,8 @@ impl PhpPool {
     ) -> Result<String> {
         let script_name = req.uri().path();
         let doc_root = script_path.parent().unwrap_or(Path::new("/"));
-        self.execute_with_path_info(script_path, req, doc_root, script_name, "").await
+        self.execute_with_path_info(script_path, req, doc_root, script_name, "")
+            .await
     }
 
     /// Execute a PHP script with minimal parameters
@@ -336,7 +355,10 @@ impl PhpPool {
             return Err(anyhow!("PHP pool not in CGI/Socket mode"));
         }
 
-        let _permit = self.semaphore.acquire().await
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
             .map_err(|_| anyhow!("Failed to acquire PHP worker permit"))?;
 
         self.active_workers.fetch_add(1, Ordering::SeqCst);
@@ -366,7 +388,7 @@ impl PhpPool {
 
         // Build CGI environment variables (like Nginx + PHP-FPM)
         let mut env = build_cgi_env(req, script_path, doc_root, script_name, path_info);
-        
+
         // Update CONTENT_LENGTH with actual body size (important for POST)
         if !body.is_empty() {
             env.insert("CONTENT_LENGTH".to_string(), body.len().to_string());
@@ -393,13 +415,16 @@ impl PhpPool {
             .stderr(Stdio::piped());
 
         // Spawn process
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| anyhow!("Failed to spawn PHP: {}", e))?;
 
         // Write POST body to stdin
         if !body.is_empty() {
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(body).await
+                stdin
+                    .write_all(body)
+                    .await
                     .map_err(|e| anyhow!("Failed to write body to PHP stdin: {}", e))?;
             }
         } else if let Some(stdin) = child.stdin.take() {
@@ -412,7 +437,12 @@ impl PhpPool {
             child.wait_with_output(),
         )
         .await
-        .map_err(|_| anyhow!("PHP script execution timed out after {}s", self.config.max_execution_time))?
+        .map_err(|_| {
+            anyhow!(
+                "PHP script execution timed out after {}s",
+                self.config.max_execution_time
+            )
+        })?
         .map_err(|e| anyhow!("Failed to execute PHP script: {}", e))?;
 
         // Log any errors
@@ -451,8 +481,9 @@ impl PhpPool {
         );
 
         // Build CGI environment variables
-        let mut env = build_cgi_env_from_parts(req_parts, script_path, doc_root, script_name, path_info);
-        
+        let mut env =
+            build_cgi_env_from_parts(req_parts, script_path, doc_root, script_name, path_info);
+
         // Update CONTENT_LENGTH with actual body size (important for POST)
         if !body.is_empty() {
             env.insert("CONTENT_LENGTH".to_string(), body.len().to_string());
@@ -479,13 +510,16 @@ impl PhpPool {
             .stderr(Stdio::piped());
 
         // Spawn process
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| anyhow!("Failed to spawn PHP: {}", e))?;
 
         // Write POST body to stdin
         if !body.is_empty() {
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(body).await
+                stdin
+                    .write_all(body)
+                    .await
                     .map_err(|e| anyhow!("Failed to write body to PHP stdin: {}", e))?;
             }
         } else if let Some(stdin) = child.stdin.take() {
@@ -498,7 +532,12 @@ impl PhpPool {
             child.wait_with_output(),
         )
         .await
-        .map_err(|_| anyhow!("PHP script execution timed out after {}s", self.config.max_execution_time))?
+        .map_err(|_| {
+            anyhow!(
+                "PHP script execution timed out after {}s",
+                self.config.max_execution_time
+            )
+        })?
         .map_err(|e| anyhow!("Failed to execute PHP script: {}", e))?;
 
         // Log any errors
@@ -544,21 +583,25 @@ impl PhpPool {
     /// Configure PHP command with standard settings
     fn configure_php_command(&self, cmd: &mut Command) {
         // Memory limit
-        cmd.arg("-d").arg(format!("memory_limit={}", self.config.memory_limit));
+        cmd.arg("-d")
+            .arg(format!("memory_limit={}", self.config.memory_limit));
 
         // Execution time
-        cmd.arg("-d").arg(format!("max_execution_time={}", self.config.max_execution_time));
+        cmd.arg("-d").arg(format!(
+            "max_execution_time={}",
+            self.config.max_execution_time
+        ));
 
         // Security settings
         cmd.arg("-d").arg("expose_php=Off");
-        
+
         // Error display settings
         if self.config.display_errors {
             cmd.arg("-d").arg("display_errors=On");
         } else {
             cmd.arg("-d").arg("display_errors=Off");
         }
-        
+
         // Error logging
         cmd.arg("-d").arg("log_errors=On");
         if let Some(ref error_log) = self.config.error_log {
@@ -764,7 +807,10 @@ fn build_cgi_env_from_parts(
     // === CGI/1.1 Standard Variables (RFC 3875) ===
 
     env.insert("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string());
-    env.insert("SERVER_PROTOCOL".to_string(), format!("{:?}", parts.version));
+    env.insert(
+        "SERVER_PROTOCOL".to_string(),
+        format!("{:?}", parts.version),
+    );
     env.insert(
         "SERVER_SOFTWARE".to_string(),
         format!("VeloServe/{}", crate::VERSION),
@@ -844,10 +890,7 @@ fn build_cgi_env_from_parts(
             continue;
         }
 
-        let env_name = format!(
-            "HTTP_{}",
-            name.as_str().to_uppercase().replace('-', "_")
-        );
+        let env_name = format!("HTTP_{}", name.as_str().to_uppercase().replace('-', "_"));
 
         if let Ok(v) = value.to_str() {
             env.insert(env_name, v.to_string());
@@ -880,7 +923,10 @@ fn build_cgi_env(
     // === CGI/1.1 Standard Variables (RFC 3875) ===
 
     env.insert("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string());
-    env.insert("SERVER_PROTOCOL".to_string(), format!("{:?}", req.version()));
+    env.insert(
+        "SERVER_PROTOCOL".to_string(),
+        format!("{:?}", req.version()),
+    );
     env.insert(
         "SERVER_SOFTWARE".to_string(),
         format!("VeloServe/{}", crate::VERSION),
@@ -969,10 +1015,7 @@ fn build_cgi_env(
             continue;
         }
 
-        let env_name = format!(
-            "HTTP_{}",
-            name.as_str().to_uppercase().replace('-', "_")
-        );
+        let env_name = format!("HTTP_{}", name.as_str().to_uppercase().replace('-', "_"));
 
         if let Ok(v) = value.to_str() {
             env.insert(env_name, v.to_string());
