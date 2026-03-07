@@ -170,6 +170,8 @@ pub fn handle_config_command(config_path: &Path, cmd: ConfigCommand) -> Result<(
 
             println!("\n[cache]");
             println!("  enabled: {}", config.cache.enable);
+            println!("  l1_enabled: {}", config.cache.l1_enabled);
+            println!("  l2_enabled: {}", config.cache.l2_enabled);
             println!("  storage: {:?}", config.cache.storage);
             println!("  memory_limit: {}", config.cache.memory_limit);
             println!("  default_ttl: {}s", config.cache.default_ttl);
@@ -209,6 +211,8 @@ max_execution_time = 30
 
 [cache]
 enable = true
+l1_enabled = true
+l2_enabled = true
 storage = "memory"
 memory_limit = "512M"
 default_ttl = 3600

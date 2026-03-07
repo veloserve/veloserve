@@ -128,6 +128,12 @@ extensions = [".php", ".phtml"]
 # Enable caching
 enable = true
 
+# Enable L1 in-process memory cache
+l1_enabled = true
+
+# Enable L2 persistent cache layer
+l2_enabled = true
+
 # Cache storage backend: "memory", "disk", or "redis"
 storage = "memory"
 
@@ -359,4 +365,3 @@ root = "/var/www/default"
 - [Environment Variables](environment-variables.md)
 - [PHP Configuration](php.md)
 - [Caching Guide](caching.md)
-

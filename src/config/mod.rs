@@ -297,6 +297,14 @@ pub struct CacheConfig {
     #[serde(default = "default_true")]
     pub enable: bool,
 
+    /// Enable L1 in-memory cache layer.
+    #[serde(default = "default_true")]
+    pub l1_enabled: bool,
+
+    /// Enable L2 persistent cache layer.
+    #[serde(default = "default_true")]
+    pub l2_enabled: bool,
+
     /// Cache storage backend
     #[serde(default = "default_cache_storage")]
     pub storage: CacheStorage,
@@ -322,6 +330,8 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             enable: true,
+            l1_enabled: true,
+            l2_enabled: true,
             storage: CacheStorage::Memory,
             memory_limit: default_cache_memory_limit(),
             default_ttl: default_cache_ttl(),
@@ -445,6 +455,8 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.server.listen, "0.0.0.0:8080");
         assert!(config.cache.enable);
+        assert!(config.cache.l1_enabled);
+        assert!(config.cache.l2_enabled);
         assert!(config.php.enable);
     }
 

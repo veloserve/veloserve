@@ -7,6 +7,8 @@ VeloServe includes a built-in multi-layer cache system. This page focuses on the
 ```toml
 [cache]
 enable = true
+l1_enabled = true
+l2_enabled = true
 storage = "memory"
 memory_limit = "256M"
 default_ttl = 3600
@@ -18,6 +20,8 @@ disk_path = "/var/cache/veloserve"
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enable` | bool | `true` | Enable caching |
+| `l1_enabled` | bool | `true` | Enable L1 in-process memory cache |
+| `l2_enabled` | bool | `true` | Enable L2 persistent cache layer |
 | `storage` | string | `"memory"` | Backend: `"memory"`, `"disk"`, or `"redis"` |
 | `memory_limit` | string | `"256M"` | Max memory for cache (memory backend) |
 | `disk_path` | string | none | Directory for disk cache |
@@ -25,6 +29,16 @@ disk_path = "/var/cache/veloserve"
 | `default_ttl` | int | `3600` | Default TTL in seconds |
 
 ## Storage Backends
+
+### Layer Model
+
+VeloServe uses a read-through/write-through flow:
+
+- L1: in-process memory cache (fast path)
+- L2: persistent cache (disk backend for now; redis reserved)
+
+On read: L1 miss falls back to L2, and L2 hits are promoted to L1.  
+On write: entries are written to both enabled layers.
 
 ### Memory
 
