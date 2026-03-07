@@ -1,6 +1,6 @@
 # Cache Configuration
 
-VeloServe includes a built-in multi-layer cache for pages, objects, and static assets.
+VeloServe includes a built-in page cache for anonymous HTML responses.
 
 ## Configuration
 
@@ -10,8 +10,7 @@ enable = true
 storage = "memory"
 memory_limit = "256M"
 default_ttl = 3600
-cache_static = true
-static_ttl = 86400
+disk_path = "/var/cache/veloserve"
 ```
 
 ## Options Reference
@@ -24,8 +23,6 @@ static_ttl = 86400
 | `disk_path` | string | none | Directory for disk cache |
 | `redis_url` | string | none | Redis connection URL |
 | `default_ttl` | int | `3600` | Default TTL in seconds |
-| `cache_static` | bool | `true` | Cache static assets (CSS, JS, images) |
-| `static_ttl` | int | `86400` | TTL for static assets |
 
 ## Storage Backends
 
@@ -73,25 +70,50 @@ exclude = [
     "/cart/*",
     "/my-account/*"
 ]
-vary_cookies = ["wordpress_logged_in_*"]
-vary_headers = ["Accept-Encoding", "Accept-Language"]
 ```
 
-## Cache Management
+When `virtualhost.cache.enable = false`, page cache is disabled for that vhost.  
+The `exclude` list supports exact matches and prefix rules with `*`.
+
+## Runtime Behavior
+
+- Caches only `GET/HEAD` responses with `200` status and `text/html` content type
+- Skips requests with query strings
+- Skips requests with auth/session cookies (WordPress/PHP session style cookies)
+- Skips responses with `Set-Cookie`, `Cache-Control: private`, or `Cache-Control: no-store`
+- Adds `X-Cache: HIT` or `X-Cache: MISS` response headers
+
+## Cache Management API
 
 ```bash
-# View cache stats
+# Server status
+GET /api/v1/status
+
+# Cache config and stats (useful for cPanel/WHM integrations)
+GET /api/v1/cache/config
+GET /api/v1/cache/stats
+
+# Purge all entries
+POST /api/v1/cache/purge
+
+# Purge by domain tag
+POST /api/v1/cache/purge?domain=example.com
+
+# Purge one page key (domain + path)
+POST /api/v1/cache/purge?domain=example.com&path=/shop
+
+# Purge by custom tag
+POST /api/v1/cache/purge?tag=category_5
+
+# Warmup request list (best-effort helper endpoint)
+POST /api/v1/cache/warm?url=/&url=/shop&url=/blog
+```
+
+## Cache Management CLI
+
+```bash
 veloserve cache stats
-
-# Purge all
 veloserve cache purge --all
-
-# Purge by domain
 veloserve cache purge --domain example.com
-
-# Purge by URL pattern
-veloserve cache purge --pattern "/blog/*"
-
-# Warm cache from sitemap
-veloserve cache warm --sitemap https://example.com/sitemap.xml
+veloserve cache purge --tag category_5
 ```
