@@ -728,17 +728,17 @@ docker run -d -p 80:80 -p 443:443 \
 
 ## 🗺️ Development Roadmap
 
-### Phase 1: MVP (Current) ✅
+### Phase 1: MVP ✅
 - [x] Core HTTP server (HTTP/1.1, HTTP/2)
 - [x] Integrated PHP support (CGI mode)
 - [x] PHP Embed SAPI mode (high-performance)
 - [x] WordPress full support (login, dashboard, sessions)
 - [x] Configuration system (TOML)
 - [x] PHP error logging configuration
-- [ ] Basic page caching
-- [ ] Basic CLI tools
+- [x] Basic page caching
+- [x] Basic CLI tools
 
-### Phase 2: Enhanced Caching
+### Phase 2: Enhanced Caching (Current)
 - [ ] Multi-layer cache system
 - [ ] Cache tagging and smart invalidation
 - [ ] Magento 2 support
