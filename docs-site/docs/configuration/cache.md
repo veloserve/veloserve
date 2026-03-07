@@ -1,6 +1,6 @@
 # Cache Configuration
 
-VeloServe includes a built-in page cache for anonymous HTML responses.
+VeloServe includes a built-in multi-layer cache system. This page focuses on the current page-cache runtime behavior and cache management interfaces.
 
 ## Configuration
 
