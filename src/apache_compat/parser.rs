@@ -6,8 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::apache_compat::{
-    ApacheConfig, ApacheDirective, ApacheSslConfig, ApacheVirtualHost,
     errors::{ApacheParseError, ParseResult},
+    ApacheConfig, ApacheDirective, ApacheSslConfig, ApacheVirtualHost,
 };
 
 /// Parser for Apache configuration files
@@ -41,12 +41,11 @@ impl ApacheConfigParser {
 
     /// Parse configuration from a file
     pub fn parse_file<P: AsRef<Path>>(&self, path: P) -> ParseResult<ApacheConfig> {
-        let content = fs::read_to_string(&path)
-            .map_err(|e| ApacheParseError::IoError { 
-                path: path.as_ref().to_path_buf(), 
-                source: e 
-            })?;
-        
+        let content = fs::read_to_string(&path).map_err(|e| ApacheParseError::IoError {
+            path: path.as_ref().to_path_buf(),
+            source: e,
+        })?;
+
         self.parse(&content)
     }
 
@@ -58,7 +57,7 @@ impl ApacheConfigParser {
 
         while let Some(line) = lines.next() {
             line_number += 1;
-            
+
             // Skip empty lines and comments (but keep them for context)
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -67,9 +66,9 @@ impl ApacheConfigParser {
 
             // Handle comments
             if trimmed.starts_with('#') {
-                config.global_directives.push(
-                    ApacheDirective::Comment(trimmed.to_string())
-                );
+                config
+                    .global_directives
+                    .push(ApacheDirective::Comment(trimmed.to_string()));
                 continue;
             }
 
@@ -92,16 +91,15 @@ impl ApacheConfigParser {
                             "LoadModule" => {
                                 let parts: Vec<&str> = value.split_whitespace().collect();
                                 if parts.len() >= 2 {
-                                    config.modules.push((
-                                        parts[0].to_string(),
-                                        PathBuf::from(parts[1]),
-                                    ));
+                                    config
+                                        .modules
+                                        .push((parts[0].to_string(), PathBuf::from(parts[1])));
                                 }
                             }
                             _ => {}
                         }
                     }
-                    
+
                     config.global_directives.push(directive);
                 }
                 Err(e) => {
@@ -140,14 +138,14 @@ impl ApacheConfigParser {
         // Extract block type and arguments
         let end_pos = line.find('>').ok_or(ApacheParseError::UnclosedBlock)?;
         let inner = &line[1..end_pos];
-        
+
         let parts: Vec<&str> = inner.split_whitespace().collect();
         if parts.is_empty() {
             return Err(ApacheParseError::EmptyBlock);
         }
 
         let block_type = parts[0].to_lowercase();
-        
+
         // For now, return a simplified version
         // In full implementation, we'd parse the entire block content
         match block_type.as_str() {
@@ -247,18 +245,15 @@ impl ApacheConfigParser {
                             }
                         }
                         "DirectoryIndex" => {
-                            vhost.directory_index = value
-                                .split_whitespace()
-                                .map(|s| s.to_string())
-                                .collect();
+                            vhost.directory_index =
+                                value.split_whitespace().map(|s| s.to_string()).collect();
                         }
                         "ErrorLog" => {
                             vhost.error_log = Some(PathBuf::from(value));
                         }
                         "CustomLog" => {
                             // CustomLog has format: path format [env]
-                            let path = value.split_whitespace().next()
-                                .map(|s| PathBuf::from(s));
+                            let path = value.split_whitespace().next().map(|s| PathBuf::from(s));
                             vhost.custom_log = path;
                         }
                         name if name.starts_with("php_admin_") => {

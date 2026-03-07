@@ -63,9 +63,10 @@ async fn main() -> anyhow::Result<()> {
     // Initialize logging
     let log_level = if cli.verbose { "debug" } else { "info" };
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            format!("veloserve={},tower_http=debug", log_level).into()
-        }))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| format!("veloserve={},tower_http=debug", log_level).into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -131,4 +132,3 @@ async fn start_server(config_path: &PathBuf, foreground: bool) -> anyhow::Result
 
     Ok(())
 }
-

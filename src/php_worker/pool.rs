@@ -67,13 +67,15 @@ impl WorkerPool {
             cmd.arg("-c").arg(ini);
         }
 
-        cmd.arg("-d").arg(format!("memory_limit={}", self.memory_limit));
-        cmd.arg("-d").arg(format!("max_execution_time={}", self.max_execution_time));
+        cmd.arg("-d")
+            .arg(format!("memory_limit={}", self.memory_limit));
+        cmd.arg("-d")
+            .arg(format!("max_execution_time={}", self.max_execution_time));
         cmd.arg("-q");
 
         cmd.stdin(Stdio::piped())
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         let process = cmd.spawn()?;
 
@@ -87,7 +89,12 @@ impl WorkerPool {
     pub fn execute(&mut self, request: &PhpRequest) -> PhpResponse {
         if let Some(worker) = self.workers.iter_mut().find(|w| !w.busy) {
             worker.busy = true;
-            let result = run_php(&self.php_binary, &self.memory_limit, self.max_execution_time, request);
+            let result = run_php(
+                &self.php_binary,
+                &self.memory_limit,
+                self.max_execution_time,
+                request,
+            );
             worker.busy = false;
             result
         } else if self.request_queue.len() < 100 {
@@ -119,10 +126,16 @@ impl WorkerPool {
     }
 }
 
-fn run_php(php_binary: &std::path::Path, memory_limit: &str, max_execution_time: u32, request: &PhpRequest) -> PhpResponse {
+fn run_php(
+    php_binary: &std::path::Path,
+    memory_limit: &str,
+    max_execution_time: u32,
+    request: &PhpRequest,
+) -> PhpResponse {
     let mut cmd = Command::new(php_binary);
     cmd.arg("-d").arg(format!("memory_limit={}", memory_limit));
-    cmd.arg("-d").arg(format!("max_execution_time={}", max_execution_time));
+    cmd.arg("-d")
+        .arg(format!("max_execution_time={}", max_execution_time));
     cmd.arg(&request.script_path);
 
     for (key, value) in &request.server_vars {
@@ -137,13 +150,14 @@ fn run_php(php_binary: &std::path::Path, memory_limit: &str, max_execution_time:
             if result.status.success() {
                 PhpResponse::ok(&stdout, &stderr)
             } else {
-                PhpResponse::error(&format!("PHP exit code {:?}: {}",
-                    result.status.code(), stderr))
+                PhpResponse::error(&format!(
+                    "PHP exit code {:?}: {}",
+                    result.status.code(),
+                    stderr
+                ))
             }
         }
-        Err(e) => {
-            PhpResponse::error(&format!("Failed to execute PHP ({:?}): {}", php_binary, e))
-        }
+        Err(e) => PhpResponse::error(&format!("Failed to execute PHP ({:?}): {}", php_binary, e)),
     }
 }
 
