@@ -324,6 +324,42 @@ pub struct CacheConfig {
     /// Disk cache path
     #[serde(default = "default_cache_path")]
     pub disk_path: String,
+
+    /// Enable cache warmer queue/worker.
+    #[serde(default = "default_true")]
+    pub warm_enabled: bool,
+
+    /// Scheduled warm interval in seconds (0 disables scheduler).
+    #[serde(default)]
+    pub warm_schedule_secs: u64,
+
+    /// Queue capacity for warm targets.
+    #[serde(default = "default_warm_max_queue_size")]
+    pub warm_max_queue_size: usize,
+
+    /// Maximum concurrent warm workers.
+    #[serde(default = "default_warm_max_concurrency")]
+    pub warm_max_concurrency: usize,
+
+    /// Per-target request timeout in milliseconds.
+    #[serde(default = "default_warm_request_timeout_ms")]
+    pub warm_request_timeout_ms: u64,
+
+    /// Maximum retry attempts per target.
+    #[serde(default = "default_warm_max_retries")]
+    pub warm_max_retries: u8,
+
+    /// Base retry backoff in milliseconds.
+    #[serde(default = "default_warm_retry_backoff_ms")]
+    pub warm_retry_backoff_ms: u64,
+
+    /// Duplicate suppression window in seconds.
+    #[serde(default = "default_warm_dedupe_window_secs")]
+    pub warm_dedupe_window_secs: u64,
+
+    /// Maximum deterministic targets queued per run.
+    #[serde(default = "default_warm_batch_size")]
+    pub warm_batch_size: usize,
 }
 
 impl Default for CacheConfig {
@@ -337,6 +373,15 @@ impl Default for CacheConfig {
             default_ttl: default_cache_ttl(),
             redis_url: None,
             disk_path: default_cache_path(),
+            warm_enabled: true,
+            warm_schedule_secs: 0,
+            warm_max_queue_size: default_warm_max_queue_size(),
+            warm_max_concurrency: default_warm_max_concurrency(),
+            warm_request_timeout_ms: default_warm_request_timeout_ms(),
+            warm_max_retries: default_warm_max_retries(),
+            warm_retry_backoff_ms: default_warm_retry_backoff_ms(),
+            warm_dedupe_window_secs: default_warm_dedupe_window_secs(),
+            warm_batch_size: default_warm_batch_size(),
         }
     }
 }
@@ -355,6 +400,34 @@ fn default_cache_ttl() -> u64 {
 
 fn default_cache_path() -> String {
     "/var/cache/veloserve".to_string()
+}
+
+fn default_warm_max_queue_size() -> usize {
+    2048
+}
+
+fn default_warm_max_concurrency() -> usize {
+    4
+}
+
+fn default_warm_request_timeout_ms() -> u64 {
+    5000
+}
+
+fn default_warm_max_retries() -> u8 {
+    2
+}
+
+fn default_warm_retry_backoff_ms() -> u64 {
+    250
+}
+
+fn default_warm_dedupe_window_secs() -> u64 {
+    120
+}
+
+fn default_warm_batch_size() -> usize {
+    64
 }
 
 /// Cache storage backend

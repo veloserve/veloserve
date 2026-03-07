@@ -13,6 +13,15 @@ storage = "memory"
 memory_limit = "256M"
 default_ttl = 3600
 disk_path = "/var/cache/veloserve"
+warm_enabled = true
+warm_schedule_secs = 0
+warm_max_queue_size = 2048
+warm_max_concurrency = 4
+warm_request_timeout_ms = 5000
+warm_max_retries = 2
+warm_retry_backoff_ms = 250
+warm_dedupe_window_secs = 120
+warm_batch_size = 64
 ```
 
 ## Options Reference
@@ -27,6 +36,15 @@ disk_path = "/var/cache/veloserve"
 | `disk_path` | string | none | Directory for disk cache |
 | `redis_url` | string | none | Redis connection URL |
 | `default_ttl` | int | `3600` | Default TTL in seconds |
+| `warm_enabled` | bool | `true` | Enable warm queue + workers |
+| `warm_schedule_secs` | int | `0` | Deterministic scheduled warm interval (seconds) |
+| `warm_max_queue_size` | int | `2048` | Warm target queue capacity |
+| `warm_max_concurrency` | int | `4` | Concurrent warm workers |
+| `warm_request_timeout_ms` | int | `5000` | Timeout per warm request |
+| `warm_max_retries` | int | `2` | Retry attempts per failed target |
+| `warm_retry_backoff_ms` | int | `250` | Base exponential backoff |
+| `warm_dedupe_window_secs` | int | `120` | Duplicate target suppression window |
+| `warm_batch_size` | int | `64` | Max deterministic targets per run |
 
 ## Storage Backends
 
@@ -119,8 +137,12 @@ POST /api/v1/cache/purge?domain=example.com&path=/shop
 # Purge by custom tag
 POST /api/v1/cache/purge?tag=category_5
 
-# Warmup request list (best-effort helper endpoint)
+# Warmup request list
 POST /api/v1/cache/warm?url=/&url=/shop&url=/blog
+
+# Warm with JSON payload
+POST /api/v1/cache/warm
+# { "urls": ["/", "/shop"], "domain": "example.com", "trigger": "manual" }
 ```
 
 ## Cache Management CLI
@@ -130,4 +152,7 @@ veloserve cache stats
 veloserve cache purge --all
 veloserve cache purge --domain example.com
 veloserve cache purge --tag category_5
+veloserve cache warm --url https://example.com/
+veloserve cache warm --urls warm-targets.txt --api http://127.0.0.1:8080
+veloserve cache warm --deterministic --api http://127.0.0.1:8080
 ```
