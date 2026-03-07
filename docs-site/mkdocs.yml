@@ -98,6 +98,7 @@ nav:
   - Guides:
     - WordPress: guides/wordpress.md
     - Magento 2: guides/magento2.md
+    - Magento Cache Invalidation: guides/magento-cache-invalidation.md
     - Performance Tuning: guides/performance.md
   - Reference:
     - CLI Commands: reference/cli.md

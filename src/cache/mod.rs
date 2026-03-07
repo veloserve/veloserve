@@ -440,36 +440,70 @@ impl CacheManager {
 
     /// Remove an entry from all cache layers.
     pub async fn remove(&self, key: &str) {
+        let _ = self.remove_with_count(key).await;
+    }
+
+    /// Remove an entry from all cache layers and return affected entry count.
+    pub async fn remove_with_count(&self, key: &str) -> usize {
         let key = normalize_cache_key(key);
-        self.remove_l1(&key).await;
+        let mut affected = 0usize;
+        if self.remove_l1(&key).await {
+            affected += 1;
+        }
 
         if let Some(l2) = &self.l2_cache {
+            let existed_in_l2 = l2.get(&key).is_some();
             if let Err(err) = l2.remove(&key) {
                 warn!("Failed to remove L2 cache key {}: {}", key, err);
+            } else if existed_in_l2 {
+                affected += 1;
             }
         }
+
+        affected
     }
 
     /// Purge all entries with a specific tag
     pub async fn purge_by_tag(&self, tag: &str) {
+        let _ = self.purge_by_tag_count(tag).await;
+    }
+
+    /// Purge all entries with a specific tag and return affected entry count.
+    pub async fn purge_by_tag_count(&self, tag: &str) -> usize {
         info!("Purging cache entries with tag: {}", tag);
+        let mut affected = 0usize;
 
         if let Some((_, keys)) = self.tag_index.remove(tag) {
             for key in keys {
-                self.remove_l1(&key).await;
+                if self.remove_l1(&key).await {
+                    affected += 1;
+                }
             }
         }
 
         if let Some(l2) = &self.l2_cache {
-            if let Err(err) = l2.purge_by_tag(tag) {
-                warn!("Failed to purge L2 tag {}: {}", tag, err);
+            match l2.purge_by_tag(tag) {
+                Ok(removed) => {
+                    affected += removed;
+                }
+                Err(err) => {
+                    warn!("Failed to purge L2 tag {}: {}", tag, err);
+                }
             }
         }
+
+        affected
     }
 
     /// Purge all entries whose key starts with a prefix.
     pub async fn purge_by_prefix(&self, prefix: &str) {
+        let _ = self.purge_by_prefix_count(prefix).await;
+    }
+
+    /// Purge all entries whose key starts with a prefix and return affected entry count.
+    pub async fn purge_by_prefix_count(&self, prefix: &str) -> usize {
         let prefix = normalize_cache_key(prefix);
+        let mut affected = 0usize;
         let keys: Vec<String> = self
             .l1_cache
             .iter()
@@ -478,14 +512,23 @@ impl CacheManager {
             .collect();
 
         for key in keys {
-            self.remove_l1(&key).await;
+            if self.remove_l1(&key).await {
+                affected += 1;
+            }
         }
 
         if let Some(l2) = &self.l2_cache {
-            if let Err(err) = l2.purge_by_prefix(&prefix) {
-                warn!("Failed to purge L2 key prefix {}: {}", prefix, err);
+            match l2.purge_by_prefix(&prefix) {
+                Ok(removed) => {
+                    affected += removed;
+                }
+                Err(err) => {
+                    warn!("Failed to purge L2 key prefix {}: {}", prefix, err);
+                }
             }
         }
+
+        affected
     }
 
     /// Purge all cache entries.
@@ -550,8 +593,10 @@ impl CacheManager {
         })
     }
 
-    async fn remove_l1(&self, key: &str) {
+    async fn remove_l1(&self, key: &str) -> bool {
+        let mut removed = false;
         if let Some((_, entry)) = self.l1_cache.remove(key) {
+            removed = true;
             self.stats
                 .size_bytes
                 .fetch_sub(entry.data.len() as u64, Ordering::Relaxed);
@@ -567,6 +612,8 @@ impl CacheManager {
             let mut lru = self.l1_lru.lock();
             lru.pop(key);
         }
+
+        removed
     }
 
     async fn write_l1(&self, key: &str, entry: CacheEntry) {
