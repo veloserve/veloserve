@@ -15,6 +15,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 
 /// SNI-aware certificate resolver that picks the right cert per domain.
+#[derive(Debug)]
 pub struct VeloServeCertResolver {
     default: Option<Arc<CertifiedKey>>,
     certs: std::collections::HashMap<String, Arc<CertifiedKey>>,
@@ -114,7 +115,11 @@ pub fn can_enable_tls(config: &Config) -> bool {
         }
     }
     config.virtualhost.iter().any(|v| {
-        v.ssl_certificate.as_ref().map_or(false, |p| Path::new(p).exists())
-            && v.ssl_certificate_key.as_ref().map_or(false, |p| Path::new(p).exists())
+        v.ssl_certificate
+            .as_ref()
+            .map_or(false, |p| Path::new(p).exists())
+            && v.ssl_certificate_key
+                .as_ref()
+                .map_or(false, |p| Path::new(p).exists())
     })
 }

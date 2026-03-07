@@ -28,9 +28,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Once;
 #[cfg(feature = "php-embed")]
 use std::sync::mpsc;
+use std::sync::Once;
 #[cfg(feature = "php-embed")]
 use std::thread;
 
@@ -164,13 +164,15 @@ unsafe extern "C" fn header_handler_hook(
                     let mut guard = lock.lock();
                     let header_name = name.trim().to_string();
                     let header_value = value.trim().to_string();
-                    
+
                     if op == b::sapi_header_op_enum_SAPI_HEADER_REPLACE {
                         // REPLACE: Remove existing headers with same name (case-insensitive)
                         // Exception: Set-Cookie headers should always be added, not replaced
                         let name_lower = header_name.to_lowercase();
                         if name_lower != "set-cookie" {
-                            guard.headers.retain(|(n, _)| n.to_lowercase() != name_lower);
+                            guard
+                                .headers
+                                .retain(|(n, _)| n.to_lowercase() != name_lower);
                         }
                     }
                     guard.headers.push((header_name, header_value));
@@ -182,9 +184,7 @@ unsafe extern "C" fn header_handler_hook(
 }
 
 #[cfg(feature = "php-embed")]
-unsafe extern "C" fn send_headers_hook(
-    sapi_headers: *mut b::sapi_headers_struct,
-) -> c_int {
+unsafe extern "C" fn send_headers_hook(sapi_headers: *mut b::sapi_headers_struct) -> c_int {
     if let Some(lock) = CAPTURE.get() {
         if !sapi_headers.is_null() {
             let code = (*sapi_headers).http_response_code;
@@ -204,7 +204,7 @@ unsafe extern "C" fn read_post_hook(buffer: *mut c_char, count_bytes: usize) -> 
 
     if let Some(cell) = REQUEST_CONTEXT.get() {
         let mut ctx = cell.lock();
-        
+
         if ctx.cursor >= ctx.body.len() {
             return 0;
         }
@@ -237,10 +237,7 @@ unsafe extern "C" fn read_cookies_hook() -> *mut c_char {
 }
 
 #[cfg(feature = "php-embed")]
-unsafe extern "C" fn log_message_hook(
-    message: *const c_char,
-    _syslog_type_int: c_int,
-) {
+unsafe extern "C" fn log_message_hook(message: *const c_char, _syslog_type_int: c_int) {
     if message.is_null() {
         return;
     }
@@ -248,13 +245,13 @@ unsafe extern "C" fn log_message_hook(
     if let Ok(msg) = c_str.to_str() {
         // Log to VeloServe logger
         error!("PHP: {}", msg);
-        
+
         // Capture for response handling
         if let Some(lock) = CAPTURE.get() {
             let mut cap = lock.lock();
             cap.last_error = Some(msg.to_string());
         }
-        
+
         // Write to PHP error log file if configured
         if let Some(log_path) = PHP_ERROR_LOG_PATH.get() {
             use std::io::Write;
@@ -281,7 +278,9 @@ unsafe extern "C" fn register_server_variables_hook(track_vars_array: *mut b::_z
     if let Some(cell) = REQUEST_CONTEXT.get() {
         let ctx = cell.lock();
         for (key, value) in &ctx.server_vars {
-            if let (Ok(key_c), Ok(val_c)) = (CString::new(key.as_str()), CString::new(value.as_str())) {
+            if let (Ok(key_c), Ok(val_c)) =
+                (CString::new(key.as_str()), CString::new(value.as_str()))
+            {
                 b::php_register_variable(
                     key_c.as_ptr() as *mut c_char,
                     val_c.as_ptr() as *mut c_char,
@@ -323,10 +322,7 @@ pub struct PhpSapi {
 
 /// Run the PHP worker thread that handles all PHP execution
 #[cfg(feature = "php-embed")]
-fn run_php_worker(
-    rx: mpsc::Receiver<PhpWorkerRequest>,
-    config: PhpEmbedConfig,
-) {
+fn run_php_worker(rx: mpsc::Receiver<PhpWorkerRequest>, config: PhpEmbedConfig) {
     info!("PHP worker thread starting...");
 
     unsafe {
@@ -344,10 +340,7 @@ fn run_php_worker(
 
         // Build argv pointers and add null terminator; keep alive in OnceCell
         let argv_ptrs = EMBED_ARGV_PTRS.get_or_init(|| {
-            let mut v: Vec<usize> = argv_strs
-                .iter()
-                .map(|s| s.as_ptr() as usize)
-                .collect();
+            let mut v: Vec<usize> = argv_strs.iter().map(|s| s.as_ptr() as usize).collect();
             v.push(std::ptr::null_mut::<c_char>() as usize);
             Box::leak(v.into_boxed_slice()) as &'static [usize]
         });
@@ -365,7 +358,7 @@ fn run_php_worker(
                 "realpath_cache_ttl=0".to_string(),
                 "log_errors=On".to_string(),
             ];
-            
+
             // Error display setting
             if config.display_errors {
                 ini_parts.push("display_errors=On".to_string());
@@ -374,7 +367,7 @@ fn run_php_worker(
                 ini_parts.push("display_errors=Off".to_string());
                 ini_parts.push("display_startup_errors=Off".to_string());
             }
-            
+
             // Error log setting
             if let Some(ref error_log) = config.error_log {
                 ini_parts.push(format!("error_log={}", error_log));
@@ -382,12 +375,12 @@ fn run_php_worker(
                 // Store path for log_message_hook to use
                 let _ = PHP_ERROR_LOG_PATH.set(PathBuf::from(error_log));
             }
-            
+
             // Add any additional custom INI settings
             for setting in &config.ini_settings {
                 ini_parts.push(setting.clone());
             }
-            
+
             CString::new(ini_parts.join("\n")).unwrap()
         });
 
@@ -570,14 +563,16 @@ unsafe fn execute_script_on_thread(
         content_type,
         post_data.len()
     );
-    
 
     // Start per-request lifecycle - php_request_startup will parse POST data
     debug!("Calling php_request_startup...");
     let startup_result = b::php_request_startup();
     debug!("php_request_startup returned: {}", startup_result);
     if startup_result != 0 {
-        return Err(format!("php_request_startup failed with code: {}", startup_result));
+        return Err(format!(
+            "php_request_startup failed with code: {}",
+            startup_result
+        ));
     }
 
     // Set remaining request_info fields AFTER php_request_startup
@@ -635,7 +630,10 @@ unsafe fn execute_script_on_thread(
     }
 
     // Create file handle for the script
-    debug!("Creating file handle for: {}", c_script_path.to_string_lossy());
+    debug!(
+        "Creating file handle for: {}",
+        c_script_path.to_string_lossy()
+    );
     let mut file_handle: b::zend_file_handle = std::mem::zeroed();
     b::zend_stream_init_filename(&mut file_handle, c_script_path.as_ptr());
     debug!("File handle type: {}", file_handle.type_);
@@ -685,21 +683,28 @@ unsafe fn execute_script_on_thread(
     }
 
     // Merge captured headers/body from hooks
-    let cap_lock = CAPTURE
-        .get_or_init(|| ParkingMutex::new(EmbedCapture::default()));
+    let cap_lock = CAPTURE.get_or_init(|| ParkingMutex::new(EmbedCapture::default()));
     let cap = cap_lock.lock();
     if !cap.body.is_empty() {
         body = cap.body.clone();
     }
     // Use Vec to preserve multiple headers with the same name (e.g., Set-Cookie)
     let resp_headers: Vec<(String, String)> = cap.headers.clone();
-    
+
     // Debug: Log captured headers
     debug!("Captured {} headers:", resp_headers.len());
     for (name, value) in &resp_headers {
-        debug!("  {}: {}", name, if value.len() > 60 { &value[..60] } else { value });
+        debug!(
+            "  {}: {}",
+            name,
+            if value.len() > 60 {
+                &value[..60]
+            } else {
+                value
+            }
+        );
     }
-    
+
     // Update status_code from capture if it was set (e.g., via Status header)
     if cap.status != 200 {
         status_code = cap.status;
@@ -708,14 +713,19 @@ unsafe fn execute_script_on_thread(
     // Consider the request successful if:
     // 1. php_execute_script returned true, OR
     // 2. We got a valid HTTP response (redirect, error page, etc.) even if script called exit()
-    // 
+    //
     // Many PHP apps (WordPress, Laravel, etc.) call exit() after sending headers/redirects,
     // which causes php_execute_script to return false even though the script executed correctly.
     let has_valid_response = status_code != 200 || !body.is_empty() || !resp_headers.is_empty();
-    
+
     if success || has_valid_response {
-        debug!("PHP script completed: success={}, status={}, body_len={}, headers={}", 
-               success, status_code, body.len(), resp_headers.len());
+        debug!(
+            "PHP script completed: success={}, status={}, body_len={}, headers={}",
+            success,
+            status_code,
+            body.len(),
+            resp_headers.len()
+        );
         Ok(PhpResponse {
             body,
             headers: resp_headers,
@@ -723,7 +733,10 @@ unsafe fn execute_script_on_thread(
         })
     } else {
         // Get the last error from the capture buffer
-        let error_msg = cap.last_error.clone().unwrap_or_else(|| "Unknown error".to_string());
+        let error_msg = cap
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "Unknown error".to_string());
         Err(format!("PHP script execution failed: {}", error_msg))
     }
 }
@@ -771,7 +784,9 @@ impl PhpSapi {
             self.initialized = true;
             Ok(())
         } else {
-            let error = PHP_INIT_ERROR.lock().clone()
+            let error = PHP_INIT_ERROR
+                .lock()
+                .clone()
                 .unwrap_or_else(|| "Unknown PHP initialization error".to_string());
             Err(error)
         }
@@ -812,10 +827,14 @@ impl PhpSapi {
 
         self.request_count.fetch_add(1, Ordering::Relaxed);
 
-        debug!("Sending PHP request to worker thread: {}", script_path.display());
+        debug!(
+            "Sending PHP request to worker thread: {}",
+            script_path.display()
+        );
 
         // Get the worker channel
-        let tx = PHP_WORKER_TX.get()
+        let tx = PHP_WORKER_TX
+            .get()
             .ok_or_else(|| "PHP worker thread not initialized".to_string())?;
 
         // Create a response channel for this request
@@ -848,8 +867,7 @@ impl PhpSapi {
             return Err("PHP SAPI not initialized".to_string());
         }
 
-        let c_code = CString::new(code)
-            .map_err(|e| format!("Invalid PHP code: {}", e))?;
+        let c_code = CString::new(code).map_err(|e| format!("Invalid PHP code: {}", e))?;
         let c_name = CString::new("<eval>").unwrap();
 
         unsafe {
@@ -857,11 +875,7 @@ impl PhpSapi {
 
             let mut retval: b::_zval_struct = std::mem::zeroed();
             // zend_eval_string may not be available in embed on all builds; check return code
-            let result = b::zend_eval_string(
-                c_code.as_ptr(),
-                &mut retval,
-                c_name.as_ptr(),
-            );
+            let result = b::zend_eval_string(c_code.as_ptr(), &mut retval, c_name.as_ptr());
 
             let mut output_zval: b::_zval_struct = std::mem::zeroed();
             b::php_output_get_contents(&mut output_zval);
@@ -1029,7 +1043,14 @@ mod tests {
 
         assert_eq!(response.status_code, 200);
         assert_eq!(response.body, b"<html>Hello</html>");
-        assert_eq!(response.headers.get("Content-Type"), Some(&"text/html".to_string()));
+        assert_eq!(
+            response
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("Content-Type"))
+                .map(|(_, value)| value.as_str()),
+            Some("text/html")
+        );
     }
 
     #[test]
