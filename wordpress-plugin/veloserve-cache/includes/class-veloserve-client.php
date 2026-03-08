@@ -18,6 +18,17 @@ class VeloServe_Client
             'plugin_version' => VELOSERVE_PLUGIN_VERSION,
             'wp_version' => get_bloginfo('version'),
             'php_version' => PHP_VERSION,
+            'optimization' => [
+                'minify_css' => !empty($settings['opt_minify_css']),
+                'combine_css' => !empty($settings['opt_combine_css']),
+                'critical_css' => !empty($settings['opt_critical_css']),
+                'minify_js' => !empty($settings['opt_minify_js']),
+                'combine_js' => !empty($settings['opt_combine_js']),
+                'defer_js' => !empty($settings['opt_defer_js']),
+                'minify_html' => !empty($settings['opt_minify_html']),
+                'prefetch_hints' => !empty($settings['opt_prefetch_hints']),
+                'prefetch_urls' => $this->parse_prefetch_urls($settings),
+            ],
         ];
 
         $response = wp_remote_post(
@@ -47,5 +58,28 @@ class VeloServe_Client
             'node_id' => isset($payload['node_id']) ? sanitize_text_field($payload['node_id']) : '',
             'registered_at' => current_time('mysql', true),
         ];
+    }
+
+    private function parse_prefetch_urls(array $settings)
+    {
+        $raw = isset($settings['opt_prefetch_urls']) ? (string) $settings['opt_prefetch_urls'] : '';
+        if ($raw === '') {
+            return [];
+        }
+
+        $urls = preg_split('/\r\n|\r|\n/', $raw);
+        if (!is_array($urls)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url !== '') {
+                $normalized[] = esc_url_raw($url);
+            }
+        }
+
+        return $normalized;
     }
 }

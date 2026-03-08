@@ -8,6 +8,13 @@ WordPress HTTP and options APIs; there are no cPanel-specific dependencies. The 
 cPanel helper script (`cpanel/wordpress/veloserve-wordpress-helper.sh`) provides optional
 automation for bulk discovery and deployment on cPanel servers.
 
+Current plugin capabilities include:
+
+- Site registration with VeloServe control plane
+- Cache controls (TTL, purge policies, targeted purge automation)
+- CDN purge cascading (Cloudflare)
+- Page optimization controls (CSS/JS/HTML minify/combine/defer, critical CSS, prefetch hints)
+
 ## Layout
 
 - `veloserve-cache/`: installable plugin source
