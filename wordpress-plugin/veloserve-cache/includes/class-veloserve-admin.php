@@ -30,7 +30,7 @@ class VeloServe_Admin
             65
         );
 
-        add_submenu_page('veloserve', 'Overview', 'Overview', 'manage_options', 'veloserve', [$this, 'render_page']);
+        add_submenu_page('veloserve', 'Dashboard', 'Dashboard', 'manage_options', 'veloserve', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Connection', 'Connection', 'manage_options', 'veloserve&tab=connection', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Cache', 'Cache', 'manage_options', 'veloserve&tab=cache', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Tools', 'Tools', 'manage_options', 'veloserve&tab=tools', [$this, 'render_page']);
@@ -222,6 +222,52 @@ class VeloServe_Admin
                 flex-wrap: wrap;
                 margin-top: 12px;
             }
+            .veloserve-shell .veloserve-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px;
+                margin: 16px 0;
+            }
+            .veloserve-shell .veloserve-card {
+                border: 1px solid #dcdcde;
+                border-radius: 8px;
+                background: #f8fbff;
+                padding: 14px;
+            }
+            .veloserve-shell .veloserve-card h3 {
+                margin: 0 0 6px;
+                font-size: 13px;
+                color: #1d2327;
+            }
+            .veloserve-shell .veloserve-card .veloserve-value {
+                margin: 0;
+                font-size: 22px;
+                font-weight: 600;
+                color: #0f2e5e;
+                line-height: 1.2;
+            }
+            .veloserve-shell .veloserve-card .veloserve-note {
+                margin-top: 5px;
+                color: #50575e;
+                font-size: 12px;
+            }
+            .veloserve-shell .veloserve-split {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 16px;
+                margin-top: 18px;
+            }
+            .veloserve-shell .veloserve-list {
+                margin: 0;
+            }
+            .veloserve-shell .veloserve-list dt {
+                font-weight: 600;
+                margin-top: 8px;
+            }
+            .veloserve-shell .veloserve-list dd {
+                margin: 0;
+                color: #2c3338;
+            }
         </style>
         <?php
     }
@@ -354,33 +400,131 @@ class VeloServe_Admin
 
     private function render_dashboard_tab($status)
     {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $has_credentials = !empty($settings['endpoint_url']) && !empty($settings['api_token']);
+        $detected = null;
+        $cache_stats = null;
+        $server_error = '';
+        $stats_error = '';
+
+        if ($has_credentials) {
+            $server = new VeloServe_Server();
+            $detected = $server->detect_server($settings);
+            if (is_wp_error($detected)) {
+                $server_error = $detected->get_error_message();
+                $detected = null;
+            } else {
+                $cache_stats = $server->get_cache_stats($settings);
+                if (is_wp_error($cache_stats)) {
+                    $stats_error = $cache_stats->get_error_message();
+                    $cache_stats = null;
+                }
+            }
+        }
+
+        $status_label = !empty($status['connected']) ? 'Connected' : 'Not connected';
+        $server_runtime_status = $detected ? $this->safe_text($detected, 'status', 'unknown') : ($has_credentials ? 'unreachable' : 'not configured');
+        $server_version = $detected ? $this->safe_text($detected, 'version', 'n/a') : 'n/a';
+        $hit_rate_raw = $this->get_nested($cache_stats, ['cache', 'hit_rate'], null);
+        $hit_rate = is_numeric($hit_rate_raw) ? sprintf('%.1f%%', ((float) $hit_rate_raw) * 100) : 'n/a';
+        $cache_entries = $this->format_number($this->get_nested($cache_stats, ['cache', 'entries'], null));
+        $queued_total = $this->format_number($this->get_nested($cache_stats, ['warming', 'queued_total'], null));
+        $quick_endpoint = !empty($settings['endpoint_url']) ? esc_html($settings['endpoint_url']) : 'Not set';
+        $registered_at = !empty($status['registered_at']) ? esc_html($status['registered_at']) : 'Never';
+        $server_memory = defined('WP_MEMORY_LIMIT') ? WP_MEMORY_LIMIT : 'Not defined';
+        $php_memory = ini_get('memory_limit') ? ini_get('memory_limit') : 'Not set';
+        $cache_size = $this->format_bytes($this->get_nested($cache_stats, ['cache', 'size_bytes'], null));
+        $hits = $this->format_number($this->get_nested($cache_stats, ['cache', 'hits'], null));
+        $misses = $this->format_number($this->get_nested($cache_stats, ['cache', 'misses'], null));
+
         ?>
-        <h2>Overview</h2>
-        <table class="widefat striped" style="max-width: 720px;">
-            <tbody>
-                <tr>
-                    <th>Connection</th>
-                    <td><?php echo !empty($status['connected']) ? 'Connected' : 'Not connected'; ?></td>
-                </tr>
-                <tr>
-                    <th>Node ID</th>
-                    <td><?php echo !empty($status['node_id']) ? esc_html($status['node_id']) : 'N/A'; ?></td>
-                </tr>
-                <tr>
-                    <th>Last registration</th>
-                    <td><?php echo !empty($status['registered_at']) ? esc_html($status['registered_at']) : 'Never'; ?></td>
-                </tr>
-                <?php if (!empty($status['last_error'])): ?>
-                <tr>
-                    <th>Last error</th>
-                    <td style="color: #d63638;"><?php echo esc_html($status['last_error']); ?></td>
-                </tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
+        <h2>Dashboard</h2>
+        <p>Live server and cache visibility for this WordPress installation.</p>
+
+        <div class="veloserve-grid">
+            <div class="veloserve-card">
+                <h3>Plugin Connection</h3>
+                <p class="veloserve-value"><?php echo esc_html($status_label); ?></p>
+                <p class="veloserve-note">Node: <?php echo !empty($status['node_id']) ? esc_html($status['node_id']) : 'N/A'; ?></p>
+            </div>
+            <div class="veloserve-card">
+                <h3>Server Status</h3>
+                <p class="veloserve-value"><?php echo esc_html($server_runtime_status); ?></p>
+                <p class="veloserve-note">Version: <?php echo esc_html($server_version); ?></p>
+            </div>
+            <div class="veloserve-card">
+                <h3>Cache Hit Rate</h3>
+                <p class="veloserve-value"><?php echo esc_html($hit_rate); ?></p>
+                <p class="veloserve-note">Hits: <?php echo esc_html($hits); ?> | Misses: <?php echo esc_html($misses); ?></p>
+            </div>
+            <div class="veloserve-card">
+                <h3>Queued Warmups</h3>
+                <p class="veloserve-value"><?php echo esc_html($queued_total); ?></p>
+                <p class="veloserve-note">Entries: <?php echo esc_html($cache_entries); ?> | Cache size: <?php echo esc_html($cache_size); ?></p>
+            </div>
+        </div>
+
+        <?php if (!$has_credentials): ?>
+            <div class="notice notice-warning inline"><p>Endpoint URL and API token are required for live server and cache stats.</p></div>
+        <?php endif; ?>
+        <?php if ($server_error !== ''): ?>
+            <div class="notice notice-error inline"><p>Server detection failed: <?php echo esc_html($server_error); ?></p></div>
+        <?php endif; ?>
+        <?php if ($stats_error !== ''): ?>
+            <div class="notice notice-error inline"><p>Cache stats request failed: <?php echo esc_html($stats_error); ?></p></div>
+        <?php endif; ?>
+
         <div class="veloserve-actions">
+            <a href="<?php echo esc_url($this->admin_page_url('dashboard')); ?>" class="button">Refresh Dashboard</a>
             <a href="<?php echo esc_url($this->admin_page_url('connection')); ?>" class="button">Open Connection</a>
             <a href="<?php echo esc_url($this->admin_page_url('cache')); ?>" class="button">Open Cache Controls</a>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
+                <?php wp_nonce_field('veloserve_register_action', 'veloserve_register_nonce'); ?>
+                <input type="hidden" name="action" value="veloserve_register" />
+                <?php submit_button('Register Site', 'secondary', 'submit', false); ?>
+            </form>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
+                <?php wp_nonce_field('veloserve_purge_all_action', 'veloserve_purge_all_nonce'); ?>
+                <input type="hidden" name="action" value="veloserve_purge_all" />
+                <?php submit_button('Purge All Cache', 'secondary', 'submit', false); ?>
+            </form>
+        </div>
+
+        <div class="veloserve-split">
+            <div class="veloserve-card">
+                <h3>Environment</h3>
+                <dl class="veloserve-list">
+                    <dt>Site URL</dt>
+                    <dd><?php echo esc_html(home_url('/')); ?></dd>
+                    <dt>WordPress Version</dt>
+                    <dd><?php echo esc_html(get_bloginfo('version')); ?></dd>
+                    <dt>PHP Version</dt>
+                    <dd><?php echo esc_html(PHP_VERSION); ?></dd>
+                    <dt>WordPress Memory Limit</dt>
+                    <dd><?php echo esc_html($server_memory); ?></dd>
+                    <dt>PHP Memory Limit</dt>
+                    <dd><?php echo esc_html($php_memory); ?></dd>
+                    <dt>Plugin Version</dt>
+                    <dd><?php echo defined('VELOSERVE_PLUGIN_VERSION') ? esc_html(VELOSERVE_PLUGIN_VERSION) : 'n/a'; ?></dd>
+                </dl>
+            </div>
+            <div class="veloserve-card">
+                <h3>Runtime Details</h3>
+                <dl class="veloserve-list">
+                    <dt>Endpoint URL</dt>
+                    <dd><?php echo $quick_endpoint; ?></dd>
+                    <dt>Last Registration</dt>
+                    <dd><?php echo esc_html($registered_at); ?></dd>
+                    <dt>PHP Worker Available</dt>
+                    <dd><?php echo $detected ? (!empty($detected['php_available']) ? 'Yes' : 'No') : 'n/a'; ?></dd>
+                    <dt>Server Cache Enabled</dt>
+                    <dd><?php echo $detected ? (!empty($detected['cache_enabled']) ? 'Yes' : 'No') : 'n/a'; ?></dd>
+                    <?php if (!empty($status['last_error'])): ?>
+                        <dt>Last Error</dt>
+                        <dd style="color: #d63638;"><?php echo esc_html($status['last_error']); ?></dd>
+                    <?php endif; ?>
+                </dl>
+            </div>
         </div>
         <?php
     }
@@ -438,11 +582,67 @@ class VeloServe_Admin
     private function tabs()
     {
         return [
-            'dashboard' => 'Overview',
+            'dashboard' => 'Dashboard',
             'connection' => 'Connection',
             'cache' => 'Cache',
             'tools' => 'Tools',
         ];
+    }
+
+    private function safe_text($source, $key, $fallback)
+    {
+        if (!is_array($source) || !isset($source[$key])) {
+            return $fallback;
+        }
+
+        return sanitize_text_field((string) $source[$key]);
+    }
+
+    private function get_nested($source, $keys, $fallback)
+    {
+        if (!is_array($source)) {
+            return $fallback;
+        }
+
+        $cursor = $source;
+        foreach ($keys as $key) {
+            if (!is_array($cursor) || !array_key_exists($key, $cursor)) {
+                return $fallback;
+            }
+            $cursor = $cursor[$key];
+        }
+
+        return $cursor;
+    }
+
+    private function format_number($value)
+    {
+        if (!is_numeric($value)) {
+            return 'n/a';
+        }
+
+        return number_format_i18n((float) $value);
+    }
+
+    private function format_bytes($value)
+    {
+        if (!is_numeric($value)) {
+            return 'n/a';
+        }
+
+        $bytes = (float) $value;
+        if ($bytes < 1024) {
+            return number_format_i18n($bytes, 0) . ' B';
+        }
+
+        $units = ['KB', 'MB', 'GB', 'TB'];
+        $unit_index = -1;
+        while ($bytes >= 1024 && $unit_index < (count($units) - 1)) {
+            $bytes /= 1024;
+            $unit_index++;
+        }
+
+        return number_format_i18n($bytes, 1) . ' ' . $units[$unit_index];
     }
 
     private function active_tab()
