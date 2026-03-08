@@ -125,6 +125,11 @@ function sanitize_text_field($value)
     return trim((string) $value);
 }
 
+function sanitize_email($value)
+{
+    return trim((string) $value);
+}
+
 function esc_url_raw($value)
 {
     return trim((string) $value);
@@ -161,6 +166,9 @@ function get_permalink($post_id) { return 'https://example.test/post/' . $post_i
 
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-client.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-server.php';
+require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-provider.php';
+require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-cloudflare-provider.php';
+require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-manager.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-admin.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-plugin.php';
 
@@ -189,6 +197,9 @@ assert_equals(1, $settings['auto_detect_server'], 'auto_detect_server default sh
 assert_equals(0, $settings['guest_mode'], 'guest_mode default should be disabled');
 assert_equals('', $settings['server_ip_override'], 'server_ip_override default should be empty');
 assert_equals(1, $settings['notifications_enabled'], 'notifications_enabled default should be enabled');
+assert_equals(0, $settings['cdn_enabled'], 'cdn_enabled default should be disabled');
+assert_equals('none', $settings['cdn_provider'], 'cdn_provider default should be none');
+assert_equals('', $settings['cloudflare_zone_id'], 'cloudflare_zone_id default should be empty');
 assert_true(is_array($status), 'Activation should create status option');
 assert_equals(false, $status['connected'], 'connected should default to false');
 
@@ -201,6 +212,12 @@ $sanitized = $admin->sanitize([
     'server_ip_override' => '203.0.113.10',
     'notifications_enabled' => '1',
     'auto_purge' => '1',
+    'cdn_enabled' => '1',
+    'cdn_provider' => 'cloudflare',
+    'cloudflare_zone_id' => 'zone-123',
+    'cloudflare_api_token' => 'cf-token',
+    'cloudflare_email' => 'ops@example.test',
+    'cloudflare_api_key' => 'legacy-key',
 ]);
 assert_equals('https://control.example.test/', $sanitized['endpoint_url'], 'sanitize should trim endpoint_url');
 assert_equals('secret-token', $sanitized['api_token'], 'sanitize should trim api_token');
@@ -209,6 +226,12 @@ assert_equals(1, $sanitized['guest_mode'], 'sanitize should persist guest_mode')
 assert_equals('203.0.113.10', $sanitized['server_ip_override'], 'sanitize should keep valid server_ip_override');
 assert_equals(1, $sanitized['notifications_enabled'], 'sanitize should persist notifications_enabled');
 assert_equals(1, $sanitized['auto_purge'], 'sanitize should persist auto_purge');
+assert_equals(1, $sanitized['cdn_enabled'], 'sanitize should persist cdn_enabled');
+assert_equals('cloudflare', $sanitized['cdn_provider'], 'sanitize should persist cdn_provider');
+assert_equals('zone-123', $sanitized['cloudflare_zone_id'], 'sanitize should persist cloudflare_zone_id');
+assert_equals('cf-token', $sanitized['cloudflare_api_token'], 'sanitize should persist cloudflare_api_token');
+assert_equals('ops@example.test', $sanitized['cloudflare_email'], 'sanitize should persist cloudflare_email');
+assert_equals('legacy-key', $sanitized['cloudflare_api_key'], 'sanitize should persist cloudflare_api_key');
 
 $invalid_ip = $admin->sanitize([
     'server_ip_override' => 'bad-ip-value',
@@ -223,6 +246,12 @@ update_option('veloserve_settings', [
     'guest_mode' => 0,
     'server_ip_override' => '',
     'notifications_enabled' => 1,
+    'cdn_enabled' => 0,
+    'cdn_provider' => 'none',
+    'cloudflare_zone_id' => '',
+    'cloudflare_api_token' => '',
+    'cloudflare_email' => '',
+    'cloudflare_api_key' => '',
 ]);
 
 $plugin = VeloServe_Plugin::instance();
@@ -285,6 +314,16 @@ $GLOBALS['http_mock'] = function ($url, $args) use (&$calls) {
         ];
     }
 
+    if (strpos($url, '/client/v4/zones/zone-123') !== false) {
+        return [
+            'response' => ['code' => 200],
+            'body' => json_encode([
+                'success' => true,
+                'result' => ['name' => 'example.test'],
+            ]),
+        ];
+    }
+
     return [
         'response' => ['code' => 404],
         'body' => '{}',
@@ -317,6 +356,16 @@ assert_true(
     'Purge URL should include domain and path query'
 );
 
+$cdn_manager = new VeloServe_CDN_Manager();
+$cdn_test = $cdn_manager->test_connection([
+    'cdn_provider' => 'cloudflare',
+    'cdn_enabled' => 1,
+    'cloudflare_zone_id' => 'zone-123',
+    'cloudflare_api_token' => 'cf-token',
+]);
+assert_true(!is_wp_error($cdn_test), 'CDN connection test should succeed with Cloudflare settings');
+assert_equals('example.test', $cdn_test['zone_name'], 'CDN connection test should parse zone name');
+
 $request_urls = [];
 $GLOBALS['http_mock'] = function ($url, $args) use (&$request_urls) {
     $request_urls[] = $url;
@@ -347,6 +396,29 @@ assert_true(
     strpos(implode("\n", $purge_urls), 'domain=example.test&path=%2Fwp-json%2F') !== false,
     'Theme switch purge should include REST index path'
 );
+
+update_option('veloserve_settings', [
+    'endpoint_url' => 'https://control.example.test',
+    'api_token' => 'secret-token',
+    'auto_purge' => 1,
+    'auto_detect_server' => 1,
+    'guest_mode' => 0,
+    'server_ip_override' => '',
+    'notifications_enabled' => 1,
+    'cdn_enabled' => 1,
+    'cdn_provider' => 'cloudflare',
+    'cloudflare_zone_id' => 'zone-123',
+    'cloudflare_api_token' => 'cf-token',
+    'cloudflare_email' => '',
+    'cloudflare_api_key' => '',
+]);
+
+$request_urls = [];
+$plugin->purge_cache_on_plugin_change();
+$cloudflare_calls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, 'https://api.cloudflare.com/client/v4/zones/zone-123/purge_cache') !== false;
+}));
+assert_true(count($cloudflare_calls) >= 1, 'Plugin lifecycle purge should cascade to Cloudflare when CDN is enabled');
 
 $request_urls = [];
 $plugin->purge_cache_on_plugin_change();

@@ -14,6 +14,7 @@ class VeloServe_Admin
         add_action('admin_post_veloserve_admin_bar_register', [$this, 'handle_admin_bar_register']);
         add_action('admin_post_veloserve_purge_all', [$this, 'handle_purge_all']);
         add_action('admin_post_veloserve_admin_bar_purge_all', [$this, 'handle_admin_bar_purge_all']);
+        add_action('admin_post_veloserve_test_cdn', [$this, 'handle_test_cdn']);
         add_action('admin_bar_menu', [$this, 'add_admin_bar_nodes'], 90);
         add_action('admin_notices', [$this, 'render_notices']);
     }
@@ -34,6 +35,7 @@ class VeloServe_Admin
         add_submenu_page('veloserve', 'Connection', 'Connection', 'manage_options', 'veloserve&tab=connection', [$this, 'render_page']);
         add_submenu_page('veloserve', 'General', 'General', 'manage_options', 'veloserve&tab=general', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Cache', 'Cache', 'manage_options', 'veloserve&tab=cache', [$this, 'render_page']);
+        add_submenu_page('veloserve', 'CDN', 'CDN', 'manage_options', 'veloserve&tab=cdn', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Tools', 'Tools', 'manage_options', 'veloserve&tab=tools', [$this, 'render_page']);
     }
 
@@ -100,6 +102,18 @@ class VeloServe_Admin
         }
         $settings['purge_path'] = sanitize_text_field($purge_path);
 
+        $cdn_provider = isset($input['cdn_provider']) ? sanitize_key((string) $input['cdn_provider']) : 'none';
+        if (!in_array($cdn_provider, ['none', 'cloudflare'], true)) {
+            $cdn_provider = 'none';
+        }
+
+        $settings['cdn_provider'] = $cdn_provider;
+        $settings['cdn_enabled'] = !empty($input['cdn_enabled']) && $cdn_provider !== 'none' ? 1 : 0;
+        $settings['cloudflare_zone_id'] = isset($input['cloudflare_zone_id']) ? sanitize_text_field(trim((string) $input['cloudflare_zone_id'])) : '';
+        $settings['cloudflare_api_token'] = isset($input['cloudflare_api_token']) ? sanitize_text_field(trim((string) $input['cloudflare_api_token'])) : '';
+        $settings['cloudflare_email'] = isset($input['cloudflare_email']) ? sanitize_email(trim((string) $input['cloudflare_email'])) : '';
+        $settings['cloudflare_api_key'] = isset($input['cloudflare_api_key']) ? sanitize_text_field(trim((string) $input['cloudflare_api_key'])) : '';
+
         return $settings;
     }
 
@@ -129,6 +143,14 @@ class VeloServe_Admin
 
         if (!empty($_GET['veloserve_purge_error'])) {
             printf('<div class="notice notice-error is-dismissible"><p>Purge error: %s</p></div>', esc_html(urldecode($_GET['veloserve_purge_error'])));
+        }
+
+        if (!empty($_GET['veloserve_cdn_tested'])) {
+            printf('<div class="notice notice-success is-dismissible"><p>%s</p></div>', 'CDN connectivity test passed.');
+        }
+
+        if (!empty($_GET['veloserve_cdn_error'])) {
+            printf('<div class="notice notice-error is-dismissible"><p>CDN error: %s</p></div>', esc_html(urldecode($_GET['veloserve_cdn_error'])));
         }
     }
 
@@ -186,6 +208,28 @@ class VeloServe_Admin
         $this->perform_purge_all();
     }
 
+    public function handle_test_cdn()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_test_cdn_action', 'veloserve_test_cdn_nonce');
+
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $settings = array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []);
+        $cdn_manager = new VeloServe_CDN_Manager();
+        $result = $cdn_manager->test_connection($settings);
+
+        if (is_wp_error($result)) {
+            wp_safe_redirect(add_query_arg('veloserve_cdn_error', rawurlencode($result->get_error_message()), $this->admin_page_url('cdn')));
+            exit;
+        }
+
+        wp_safe_redirect(add_query_arg('veloserve_cdn_tested', '1', $this->admin_page_url('cdn')));
+        exit;
+    }
+
     public function handle_admin_bar_register()
     {
         if (!current_user_can('manage_options')) {
@@ -218,6 +262,8 @@ class VeloServe_Admin
                     <?php $this->render_general_tab(); ?>
                 <?php elseif ($tab === 'cache'): ?>
                     <?php $this->render_cache_tab($settings); ?>
+                <?php elseif ($tab === 'cdn'): ?>
+                    <?php $this->render_cdn_tab($settings); ?>
                 <?php elseif ($tab === 'tools'): ?>
                     <?php $this->render_tools_tab(); ?>
                 <?php else: ?>
@@ -416,11 +462,21 @@ class VeloServe_Admin
         }
 
         $server = new VeloServe_Server();
-        $response = $server->purge_cache($settings, $this->build_purge_params_from_settings($settings));
+        $params = $this->build_purge_params_from_settings($settings);
+        $response = $server->purge_cache($settings, $params);
 
         if (is_wp_error($response)) {
             wp_safe_redirect(add_query_arg('veloserve_purge_error', rawurlencode($response->get_error_message()), $this->admin_page_url('cache')));
             exit;
+        }
+
+        $cdn_manager = new VeloServe_CDN_Manager();
+        if ($cdn_manager->should_purge($settings)) {
+            $cdn_response = $cdn_manager->purge($settings, $params);
+            if (is_wp_error($cdn_response)) {
+                wp_safe_redirect(add_query_arg('veloserve_purge_error', rawurlencode($cdn_response->get_error_message()), $this->admin_page_url('cache')));
+                exit;
+            }
         }
 
         wp_safe_redirect(add_query_arg('veloserve_purged', '1', $this->admin_page_url('cache')));
@@ -765,7 +821,67 @@ class VeloServe_Admin
             <li><a href="<?php echo esc_url($this->admin_page_url('dashboard')); ?>">View system overview</a></li>
             <li><a href="<?php echo esc_url($this->admin_page_url('connection')); ?>">Run site registration</a></li>
             <li><a href="<?php echo esc_url($this->admin_page_url('cache')); ?>">Run cache purge</a></li>
+            <li><a href="<?php echo esc_url($this->admin_page_url('cdn')); ?>">Validate CDN configuration</a></li>
         </ul>
+        <?php
+    }
+
+    private function render_cdn_tab($settings)
+    {
+        $settings = array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []);
+        ?>
+        <h2>CDN Controls</h2>
+        <p>Configure edge cache purge cascading and verify provider connectivity.</p>
+
+        <form method="post" action="options.php">
+            <?php settings_fields('veloserve_settings_group'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row">Enable CDN Purge Cascade</th>
+                    <td>
+                        <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cdn_enabled]" value="1" <?php checked((int) $settings['cdn_enabled'], 1); ?> /> Send matching purge events to configured CDN provider</label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">CDN Provider</th>
+                    <td>
+                        <select name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cdn_provider]">
+                            <option value="none" <?php selected($settings['cdn_provider'], 'none'); ?>>None</option>
+                            <option value="cloudflare" <?php selected($settings['cdn_provider'], 'cloudflare'); ?>>Cloudflare</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Cloudflare Zone ID</th>
+                    <td><input type="text" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cloudflare_zone_id]" value="<?php echo esc_attr($settings['cloudflare_zone_id']); ?>" class="regular-text" placeholder="023e105f4ecef8ad9ca31a8372d0c353" /></td>
+                </tr>
+                <tr>
+                    <th scope="row">Cloudflare API Token</th>
+                    <td>
+                        <input type="password" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cloudflare_api_token]" value="<?php echo esc_attr($settings['cloudflare_api_token']); ?>" class="regular-text" autocomplete="off" />
+                        <p class="description">Preferred auth method. Token should include Zone:Read and Cache Purge permissions.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Cloudflare Email</th>
+                    <td><input type="email" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cloudflare_email]" value="<?php echo esc_attr($settings['cloudflare_email']); ?>" class="regular-text" autocomplete="off" /></td>
+                </tr>
+                <tr>
+                    <th scope="row">Cloudflare API Key</th>
+                    <td>
+                        <input type="password" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cloudflare_api_key]" value="<?php echo esc_attr($settings['cloudflare_api_key']); ?>" class="regular-text" autocomplete="off" />
+                        <p class="description">Legacy fallback when token-based auth is unavailable.</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('Save CDN Settings'); ?>
+        </form>
+
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
+            <?php wp_nonce_field('veloserve_test_cdn_action', 'veloserve_test_cdn_nonce'); ?>
+            <input type="hidden" name="action" value="veloserve_test_cdn" />
+            <?php submit_button('Test CDN Connection', 'secondary', 'submit', false); ?>
+        </form>
         <?php
     }
 
@@ -776,6 +892,7 @@ class VeloServe_Admin
             'connection' => 'Connection',
             'general' => 'General',
             'cache' => 'Cache',
+            'cdn' => 'CDN',
             'tools' => 'Tools',
         ];
     }

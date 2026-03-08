@@ -16,6 +16,7 @@ Primary outcomes in v1:
 - registers WordPress site with VeloServe endpoint
 - exposes admin status and action controls with success/error notices
 - purges cache on content mutations, theme switches, and customizer saves (when enabled)
+- supports optional CDN purge cascading with Cloudflare provider integration
 - provides manual Purge All Cache button
 - supports cPanel automation through helper contract
 
@@ -27,6 +28,8 @@ Path: `wordpress-plugin/veloserve-cache`
 - `includes/class-veloserve-client.php`: endpoint communication for registration
 - `includes/class-veloserve-admin.php`: admin UI/settings/actions
 - `includes/class-veloserve-plugin.php`: state model and content-change purge hooks
+- `includes/class-veloserve-cdn-manager.php`: CDN provider abstraction and routing
+- `includes/class-veloserve-cdn-cloudflare-provider.php`: Cloudflare API integration (test + purge)
 - `uninstall.php`: removes plugin options
 
 ## Prerequisites
@@ -152,6 +155,27 @@ The plugin automatically sends cache purge requests to the VeloServe endpoint wh
 
 A **Purge All Cache** button is available on the admin settings page for manual full-site purges.
 
+## CDN Integration (Cloudflare)
+
+The plugin includes a CDN abstraction layer with a Cloudflare provider.
+
+Configuration path:
+
+1. Open `wp-admin -> VeloServe -> CDN`
+2. Enable `CDN Purge Cascade`
+3. Select provider `Cloudflare`
+4. Set `Cloudflare Zone ID`
+5. Set either:
+- `Cloudflare API Token` (recommended), or
+- `Cloudflare Email` + `Cloudflare API Key` (legacy fallback)
+6. Click `Test CDN Connection`
+
+When enabled, purge operations cascade to Cloudflare using equivalent targets:
+- URL/domain+path purge -> Cloudflare file purge
+- domain purge -> Cloudflare host purge
+- tag purge -> Cloudflare tag purge
+- full purge policy -> Cloudflare `purge_everything`
+
 Auto-purge can be disabled via the `Auto Purge` checkbox in plugin settings.
 
 ## Test Coverage
@@ -166,6 +190,8 @@ Covered:
 - non-2xx registration is reported as failure
 - content change triggers purge request
 - plugin lifecycle events trigger purge requests
+- CDN connection test validates Cloudflare API auth and zone lookup
+- CDN purge cascade triggers Cloudflare API purge requests when enabled
 - WooCommerce order status change triggers storefront purges
 - theme switch triggers purge request
 - auto_purge disabled suppresses purge

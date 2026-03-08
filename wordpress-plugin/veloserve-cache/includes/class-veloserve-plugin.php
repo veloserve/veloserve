@@ -10,6 +10,7 @@ class VeloServe_Plugin
 
     private $client;
     private $server;
+    private $cdn_manager;
     private $admin;
 
     public static function instance()
@@ -54,6 +55,12 @@ class VeloServe_Plugin
             'purge_domain' => '',
             'purge_path' => '/',
             'purge_tag' => '',
+            'cdn_enabled' => 0,
+            'cdn_provider' => 'none',
+            'cloudflare_zone_id' => '',
+            'cloudflare_api_token' => '',
+            'cloudflare_email' => '',
+            'cloudflare_api_key' => '',
         ];
     }
 
@@ -71,6 +78,7 @@ class VeloServe_Plugin
     {
         $this->client = new VeloServe_Client();
         $this->server = new VeloServe_Server();
+        $this->cdn_manager = new VeloServe_CDN_Manager();
         $this->admin = new VeloServe_Admin();
         $this->admin->hooks();
 
@@ -287,8 +295,12 @@ class VeloServe_Plugin
     private function purge_targets(array $targets)
     {
         $settings = get_option(VELOSERVE_OPTION_KEY, self::default_settings());
+        $settings = array_merge(self::default_settings(), is_array($settings) ? $settings : []);
         if (!$this->server) {
             $this->server = new VeloServe_Server();
+        }
+        if (!$this->cdn_manager) {
+            $this->cdn_manager = new VeloServe_CDN_Manager();
         }
 
         $seen = [];
@@ -323,6 +335,9 @@ class VeloServe_Plugin
             $seen[$key] = true;
 
             $this->server->purge_cache($settings, $params);
+            if ($this->cdn_manager->should_purge($settings)) {
+                $this->cdn_manager->purge($settings, $params);
+            }
         }
     }
 
