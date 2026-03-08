@@ -32,6 +32,7 @@ class VeloServe_Admin
 
         add_submenu_page('veloserve', 'Dashboard', 'Dashboard', 'manage_options', 'veloserve', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Connection', 'Connection', 'manage_options', 'veloserve&tab=connection', [$this, 'render_page']);
+        add_submenu_page('veloserve', 'General', 'General', 'manage_options', 'veloserve&tab=general', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Cache', 'Cache', 'manage_options', 'veloserve&tab=cache', [$this, 'render_page']);
         add_submenu_page('veloserve', 'Tools', 'Tools', 'manage_options', 'veloserve&tab=tools', [$this, 'render_page']);
     }
@@ -40,11 +41,16 @@ class VeloServe_Admin
     {
         register_setting('veloserve_settings_group', VELOSERVE_OPTION_KEY, [$this, 'sanitize']);
 
-        add_settings_section('veloserve_main', 'Connection', '__return_false', 'veloserve');
+        add_settings_section('veloserve_connection', 'Connection', '__return_false', 'veloserve_connection');
+        add_settings_section('veloserve_general', 'General', '__return_false', 'veloserve_general');
 
-        add_settings_field('endpoint_url', 'Endpoint URL', [$this, 'render_endpoint_field'], 'veloserve', 'veloserve_main');
-        add_settings_field('api_token', 'API Token', [$this, 'render_token_field'], 'veloserve', 'veloserve_main');
-        add_settings_field('auto_purge', 'Auto Purge', [$this, 'render_auto_purge_field'], 'veloserve', 'veloserve_main');
+        add_settings_field('endpoint_url', 'Endpoint URL', [$this, 'render_endpoint_field'], 'veloserve_connection', 'veloserve_connection');
+        add_settings_field('api_token', 'API Token', [$this, 'render_token_field'], 'veloserve_connection', 'veloserve_connection');
+        add_settings_field('auto_detect_server', 'Auto-Detect Server', [$this, 'render_auto_detect_field'], 'veloserve_general', 'veloserve_general');
+        add_settings_field('guest_mode', 'Guest Mode', [$this, 'render_guest_mode_field'], 'veloserve_general', 'veloserve_general');
+        add_settings_field('server_ip_override', 'Server IP Override', [$this, 'render_server_ip_override_field'], 'veloserve_general', 'veloserve_general');
+        add_settings_field('notifications_enabled', 'Notifications', [$this, 'render_notifications_field'], 'veloserve_general', 'veloserve_general');
+        add_settings_field('auto_purge', 'Auto Purge', [$this, 'render_auto_purge_field'], 'veloserve_general', 'veloserve_general');
     }
 
     public function sanitize($input)
@@ -53,6 +59,16 @@ class VeloServe_Admin
 
         $settings['endpoint_url'] = isset($input['endpoint_url']) ? esc_url_raw(trim($input['endpoint_url'])) : '';
         $settings['api_token'] = isset($input['api_token']) ? sanitize_text_field(trim($input['api_token'])) : '';
+        $settings['auto_detect_server'] = !empty($input['auto_detect_server']) ? 1 : 0;
+        $settings['guest_mode'] = !empty($input['guest_mode']) ? 1 : 0;
+
+        $server_ip = isset($input['server_ip_override']) ? sanitize_text_field(trim($input['server_ip_override'])) : '';
+        if ($server_ip !== '' && filter_var($server_ip, FILTER_VALIDATE_IP) === false) {
+            $server_ip = '';
+        }
+
+        $settings['server_ip_override'] = $server_ip;
+        $settings['notifications_enabled'] = !empty($input['notifications_enabled']) ? 1 : 0;
         $settings['auto_purge'] = !empty($input['auto_purge']) ? 1 : 0;
 
         return $settings;
@@ -62,6 +78,11 @@ class VeloServe_Admin
     {
         $screen = get_current_screen();
         if (!$screen || $screen->id !== 'toplevel_page_veloserve') {
+            return;
+        }
+
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        if (empty($settings['notifications_enabled'])) {
             return;
         }
 
@@ -163,6 +184,8 @@ class VeloServe_Admin
             <div class="veloserve-panel">
                 <?php if ($tab === 'connection'): ?>
                     <?php $this->render_connection_tab(); ?>
+                <?php elseif ($tab === 'general'): ?>
+                    <?php $this->render_general_tab(); ?>
                 <?php elseif ($tab === 'cache'): ?>
                     <?php $this->render_cache_tab($settings); ?>
                 <?php elseif ($tab === 'tools'): ?>
@@ -299,6 +322,47 @@ class VeloServe_Admin
             '<label><input type="checkbox" name="%1$s[auto_purge]" value="1" %2$s /> Purge cache on content updates</label>',
             esc_attr(VELOSERVE_OPTION_KEY),
             checked((int) $settings['auto_purge'], 1, false)
+        );
+    }
+
+    public function render_auto_detect_field()
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        printf(
+            '<label><input type="checkbox" name="%1$s[auto_detect_server]" value="1" %2$s /> Automatically detect VeloServe runtime and API endpoints</label>',
+            esc_attr(VELOSERVE_OPTION_KEY),
+            checked((int) $settings['auto_detect_server'], 1, false)
+        );
+    }
+
+    public function render_guest_mode_field()
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        printf(
+            '<label><input type="checkbox" name="%1$s[guest_mode]" value="1" %2$s /> Restrict to read-only dashboard controls for non-admin operator workflows</label>',
+            esc_attr(VELOSERVE_OPTION_KEY),
+            checked((int) $settings['guest_mode'], 1, false)
+        );
+    }
+
+    public function render_server_ip_override_field()
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        printf(
+            '<input type="text" name="%1$s[server_ip_override]" value="%2$s" class="regular-text" placeholder="203.0.113.10 or 2001:db8::10" />',
+            esc_attr(VELOSERVE_OPTION_KEY),
+            esc_attr($settings['server_ip_override'])
+        );
+        echo '<p class="description">Optional. Force API calls to this IP instead of auto-discovery.</p>';
+    }
+
+    public function render_notifications_field()
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        printf(
+            '<label><input type="checkbox" name="%1$s[notifications_enabled]" value="1" %2$s /> Show operational notices for registration, purge, and connectivity events</label>',
+            esc_attr(VELOSERVE_OPTION_KEY),
+            checked((int) $settings['notifications_enabled'], 1, false)
         );
     }
 
@@ -538,7 +602,7 @@ class VeloServe_Admin
         <form method="post" action="options.php">
             <?php
             settings_fields('veloserve_settings_group');
-            do_settings_sections('veloserve');
+            do_settings_sections('veloserve_connection');
             submit_button('Save Settings');
             ?>
         </form>
@@ -547,6 +611,22 @@ class VeloServe_Admin
             <?php wp_nonce_field('veloserve_register_action', 'veloserve_register_nonce'); ?>
             <input type="hidden" name="action" value="veloserve_register" />
             <?php submit_button('Register Site with VeloServe', 'primary', 'submit', false); ?>
+        </form>
+        <?php
+    }
+
+    private function render_general_tab()
+    {
+        ?>
+        <h2>General Settings</h2>
+        <p>Configure runtime discovery behavior, operator mode, and notification preferences.</p>
+
+        <form method="post" action="options.php">
+            <?php
+            settings_fields('veloserve_settings_group');
+            do_settings_sections('veloserve_general');
+            submit_button('Save Settings');
+            ?>
         </form>
         <?php
     }
@@ -584,6 +664,7 @@ class VeloServe_Admin
         return [
             'dashboard' => 'Dashboard',
             'connection' => 'Connection',
+            'general' => 'General',
             'cache' => 'Cache',
             'tools' => 'Tools',
         ];

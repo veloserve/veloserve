@@ -185,13 +185,44 @@ $settings = get_option('veloserve_settings');
 $status = get_option('veloserve_status');
 assert_true(is_array($settings), 'Activation should create settings option');
 assert_equals(1, $settings['auto_purge'], 'auto_purge default should be enabled');
+assert_equals(1, $settings['auto_detect_server'], 'auto_detect_server default should be enabled');
+assert_equals(0, $settings['guest_mode'], 'guest_mode default should be disabled');
+assert_equals('', $settings['server_ip_override'], 'server_ip_override default should be empty');
+assert_equals(1, $settings['notifications_enabled'], 'notifications_enabled default should be enabled');
 assert_true(is_array($status), 'Activation should create status option');
 assert_equals(false, $status['connected'], 'connected should default to false');
+
+$admin = new VeloServe_Admin();
+$sanitized = $admin->sanitize([
+    'endpoint_url' => ' https://control.example.test/ ',
+    'api_token' => ' secret-token ',
+    'auto_detect_server' => '1',
+    'guest_mode' => '1',
+    'server_ip_override' => '203.0.113.10',
+    'notifications_enabled' => '1',
+    'auto_purge' => '1',
+]);
+assert_equals('https://control.example.test/', $sanitized['endpoint_url'], 'sanitize should trim endpoint_url');
+assert_equals('secret-token', $sanitized['api_token'], 'sanitize should trim api_token');
+assert_equals(1, $sanitized['auto_detect_server'], 'sanitize should persist auto_detect_server');
+assert_equals(1, $sanitized['guest_mode'], 'sanitize should persist guest_mode');
+assert_equals('203.0.113.10', $sanitized['server_ip_override'], 'sanitize should keep valid server_ip_override');
+assert_equals(1, $sanitized['notifications_enabled'], 'sanitize should persist notifications_enabled');
+assert_equals(1, $sanitized['auto_purge'], 'sanitize should persist auto_purge');
+
+$invalid_ip = $admin->sanitize([
+    'server_ip_override' => 'bad-ip-value',
+]);
+assert_equals('', $invalid_ip['server_ip_override'], 'sanitize should drop invalid server_ip_override');
 
 update_option('veloserve_settings', [
     'endpoint_url' => 'https://control.example.test',
     'api_token' => 'secret-token',
     'auto_purge' => 1,
+    'auto_detect_server' => 1,
+    'guest_mode' => 0,
+    'server_ip_override' => '',
+    'notifications_enabled' => 1,
 ]);
 
 $plugin = VeloServe_Plugin::instance();
@@ -309,6 +340,10 @@ update_option('veloserve_settings', [
     'endpoint_url' => 'https://control.example.test',
     'api_token' => 'secret-token',
     'auto_purge' => 0,
+    'auto_detect_server' => 1,
+    'guest_mode' => 0,
+    'server_ip_override' => '',
+    'notifications_enabled' => 1,
 ]);
 $plugin->purge_cache_on_content_change(43, $post);
 assert_true(count($purge_urls) === 0, 'Content change should not purge when auto_purge is disabled');

@@ -55,9 +55,14 @@ zip -r veloserve-cache.zip veloserve-cache
 
 1. Open `wp-admin -> VeloServe`
 2. Set `Endpoint URL` and `API Token`
-3. Keep `Auto Purge` enabled unless debugging cache behavior
-4. Click `Register Site with VeloServe`
-5. Verify status shows:
+3. Open `General` tab and configure:
+- `Auto-Detect Server` for runtime/API discovery
+- `Guest Mode` for read-only operator workflows
+- optional `Server IP Override` (IPv4/IPv6)
+- `Notifications` for admin success/error notices
+4. Keep `Auto Purge` enabled unless debugging cache behavior
+5. Click `Register Site with VeloServe`
+6. Verify status shows:
 - `Connection: Connected`
 - non-empty `Node ID`
 

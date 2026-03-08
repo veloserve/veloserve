@@ -45,6 +45,10 @@ class VeloServe_Plugin
             'endpoint_url' => '',
             'api_token' => '',
             'auto_purge' => 1,
+            'auto_detect_server' => 1,
+            'guest_mode' => 0,
+            'server_ip_override' => '',
+            'notifications_enabled' => 1,
         ];
     }
 
