@@ -76,6 +76,41 @@ class VeloServe_Server
         return $this->request_json('POST', $this->build_url($api_base, $path), $settings);
     }
 
+    public function warm_cache(array $settings = [], array $urls = [], $trigger = 'wordpress-plugin', $strategy = 'manual')
+    {
+        $api_base = $this->resolve_api_base($settings);
+        if (is_wp_error($api_base)) {
+            return $api_base;
+        }
+
+        $normalized_urls = [];
+        foreach ($urls as $url) {
+            $url = esc_url_raw(trim((string) $url));
+            if ($url !== '') {
+                $normalized_urls[] = $url;
+            }
+        }
+        $normalized_urls = array_values(array_unique($normalized_urls));
+
+        if (empty($normalized_urls)) {
+            return [
+                'accepted' => 0,
+                'queued' => 0,
+            ];
+        }
+
+        return $this->request_json(
+            'POST',
+            $this->build_url($api_base, '/api/v1/cache/warm'),
+            $settings,
+            [
+                'urls' => $normalized_urls,
+                'trigger' => sanitize_text_field((string) $trigger),
+                'strategy' => sanitize_text_field((string) $strategy),
+            ]
+        );
+    }
+
     private function build_purge_query(array $params)
     {
         $query = [];
@@ -119,7 +154,7 @@ class VeloServe_Server
         return $query;
     }
 
-    private function request_json($method, $url, array $settings)
+    private function request_json($method, $url, array $settings, $body = null)
     {
         $headers = [
             'Accept' => 'application/json',
@@ -137,6 +172,11 @@ class VeloServe_Server
         if ($method === 'GET') {
             $response = wp_remote_get($url, $args);
         } else {
+            if (is_array($body)) {
+                $headers['Content-Type'] = 'application/json';
+                $args['headers'] = $headers;
+                $args['body'] = wp_json_encode($body);
+            }
             $response = wp_remote_post($url, $args);
         }
 

@@ -23,6 +23,9 @@ if (!defined('VELOSERVE_OPTION_KEY')) {
 if (!defined('VELOSERVE_STATUS_KEY')) {
     define('VELOSERVE_STATUS_KEY', 'veloserve_status');
 }
+if (!defined('VELOSERVE_IMAGE_QUEUE_KEY')) {
+    define('VELOSERVE_IMAGE_QUEUE_KEY', 'veloserve_image_queue');
+}
 
 class WP_Error
 {
@@ -155,6 +158,11 @@ function wp_json_encode($value)
     return json_encode($value);
 }
 
+function esc_url($value)
+{
+    return trim((string) $value);
+}
+
 class WP_Post
 {
     public $post_status;
@@ -166,14 +174,25 @@ class WP_Post
 }
 
 function add_action() {}
+function add_filter() {}
 function wp_is_post_revision() { return false; }
 function get_permalink($post_id) { return 'https://example.test/post/' . $post_id; }
+function wp_attachment_is_image() { return true; }
+function wp_next_scheduled() { return false; }
+function wp_schedule_single_event() { return true; }
+function get_attached_file($attachment_id) { return __FILE__; }
+function wp_get_attachment_url($attachment_id) { return 'https://example.test/uploads/image-' . (int) $attachment_id . '.jpg'; }
+function get_post_meta($post_id, $key, $single = false) { return []; }
+function update_post_meta($post_id, $key, $value) { return true; }
+function checked($checked, $current = true, $echo = true) { return ''; }
+function selected($selected, $current = true, $echo = true) { return ''; }
 
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-client.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-server.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-provider.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-cloudflare-provider.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-cdn-manager.php';
+require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-image-optimizer.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-admin.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-plugin.php';
 
@@ -214,6 +233,11 @@ assert_equals(1, $settings['opt_defer_js'], 'opt_defer_js default should be enab
 assert_equals(1, $settings['opt_minify_html'], 'opt_minify_html default should be enabled');
 assert_equals(0, $settings['opt_prefetch_hints'], 'opt_prefetch_hints default should be disabled');
 assert_equals('', $settings['opt_prefetch_urls'], 'opt_prefetch_urls default should be empty');
+assert_equals(1, $settings['opt_lazyload_images'], 'opt_lazyload_images default should be enabled');
+assert_equals(1, $settings['opt_image_webp'], 'opt_image_webp default should be enabled');
+assert_equals(0, $settings['opt_image_avif'], 'opt_image_avif default should be disabled');
+assert_equals(82, $settings['opt_image_quality'], 'opt_image_quality default should be 82');
+assert_equals(1, $settings['opt_image_queue'], 'opt_image_queue default should be enabled');
 assert_true(is_array($status), 'Activation should create status option');
 assert_equals(false, $status['connected'], 'connected should default to false');
 
@@ -235,6 +259,11 @@ $sanitized = $admin->sanitize([
     'opt_minify_html' => '1',
     'opt_prefetch_hints' => '1',
     'opt_prefetch_urls' => " https://fonts.gstatic.com \nhttps://cdn.example.test/assets ",
+    'opt_lazyload_images' => '1',
+    'opt_image_webp' => '1',
+    'opt_image_avif' => '1',
+    'opt_image_quality' => '78',
+    'opt_image_queue' => '1',
     'cdn_enabled' => '1',
     'cdn_provider' => 'cloudflare',
     'cloudflare_zone_id' => 'zone-123',
@@ -258,6 +287,11 @@ assert_equals(1, $sanitized['opt_defer_js'], 'sanitize should persist opt_defer_
 assert_equals(1, $sanitized['opt_minify_html'], 'sanitize should persist opt_minify_html');
 assert_equals(1, $sanitized['opt_prefetch_hints'], 'sanitize should persist opt_prefetch_hints');
 assert_equals("https://fonts.gstatic.com\nhttps://cdn.example.test/assets", $sanitized['opt_prefetch_urls'], 'sanitize should normalize opt_prefetch_urls');
+assert_equals(1, $sanitized['opt_lazyload_images'], 'sanitize should persist opt_lazyload_images');
+assert_equals(1, $sanitized['opt_image_webp'], 'sanitize should persist opt_image_webp');
+assert_equals(1, $sanitized['opt_image_avif'], 'sanitize should persist opt_image_avif');
+assert_equals(78, $sanitized['opt_image_quality'], 'sanitize should persist opt_image_quality');
+assert_equals(1, $sanitized['opt_image_queue'], 'sanitize should persist opt_image_queue');
 assert_equals(1, $sanitized['cdn_enabled'], 'sanitize should persist cdn_enabled');
 assert_equals('cloudflare', $sanitized['cdn_provider'], 'sanitize should persist cdn_provider');
 assert_equals('zone-123', $sanitized['cloudflare_zone_id'], 'sanitize should persist cloudflare_zone_id');
@@ -287,6 +321,11 @@ update_option('veloserve_settings', [
     'opt_minify_html' => 1,
     'opt_prefetch_hints' => 1,
     'opt_prefetch_urls' => "https://fonts.gstatic.com\nhttps://cdn.example.test/assets",
+    'opt_lazyload_images' => 1,
+    'opt_image_webp' => 1,
+    'opt_image_avif' => 0,
+    'opt_image_quality' => 82,
+    'opt_image_queue' => 1,
     'cdn_enabled' => 0,
     'cdn_provider' => 'none',
     'cloudflare_zone_id' => '',
@@ -318,6 +357,11 @@ assert_true(is_array($registration_payload), 'Register payload should be capture
 assert_true(isset($registration_payload['optimization']), 'Register payload should include optimization settings');
 assert_equals(true, $registration_payload['optimization']['minify_css'], 'Register payload should include minify_css');
 assert_equals(true, $registration_payload['optimization']['defer_js'], 'Register payload should include defer_js');
+assert_true(isset($registration_payload['optimization']['images']), 'Register payload should include image optimization settings');
+assert_equals(true, $registration_payload['optimization']['images']['lazyload'], 'Register payload should include lazyload flag');
+assert_equals(true, $registration_payload['optimization']['images']['webp'], 'Register payload should include webp flag');
+assert_equals(false, $registration_payload['optimization']['images']['avif'], 'Register payload should include avif flag');
+assert_equals(82, $registration_payload['optimization']['images']['quality'], 'Register payload should include image quality');
 
 $GLOBALS['http_mock'] = function ($url, $args) {
     return [
@@ -364,6 +408,13 @@ $GLOBALS['http_mock'] = function ($url, $args) use (&$calls) {
         ];
     }
 
+    if (strpos($url, '/api/v1/cache/warm') !== false) {
+        return [
+            'response' => ['code' => 200],
+            'body' => json_encode(['accepted' => 2, 'queued' => 2]),
+        ];
+    }
+
     if (strpos($url, '/client/v4/zones/zone-123') !== false) {
         return [
             'response' => ['code' => 200],
@@ -400,10 +451,22 @@ $purge = $server->purge_cache(
 );
 assert_true(!is_wp_error($purge), 'Purge should succeed');
 
+$warm = $server->warm_cache(
+    ['endpoint_url' => 'http://127.0.0.1:8080', 'api_token' => 'secret-token'],
+    ['https://example.test/uploads/image-12.jpg', 'https://example.test/uploads/image-12.webp'],
+    'wordpress-image-opt',
+    'manual'
+);
+assert_true(!is_wp_error($warm), 'Cache warm should succeed');
+
 $last_call = $calls[count($calls) - 1];
 assert_true(
-    strpos($last_call['url'], '/api/v1/cache/purge?domain=example.test&path=%2Fpost%2F42') !== false,
-    'Purge URL should include domain and path query'
+    strpos($last_call['url'], '/api/v1/cache/warm') !== false,
+    'Warm URL should target cache warm endpoint'
+);
+assert_true(
+    strpos($last_call['args']['body'], 'wordpress-image-opt') !== false,
+    'Warm request body should include trigger'
 );
 
 $cdn_manager = new VeloServe_CDN_Manager();

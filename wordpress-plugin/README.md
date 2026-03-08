@@ -14,6 +14,7 @@ Current plugin capabilities include:
 - Cache controls (TTL, purge policies, targeted purge automation)
 - CDN purge cascading (Cloudflare)
 - Page optimization controls (CSS/JS/HTML minify/combine/defer, critical CSS, prefetch hints)
+- Image optimization stack (lazyload defaults, queued compression, WebP/AVIF generation, warm queue integration)
 
 ## Layout
 

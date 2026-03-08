@@ -11,6 +11,7 @@ class VeloServe_Plugin
     private $client;
     private $server;
     private $cdn_manager;
+    private $image_optimizer;
     private $admin;
 
     public static function instance()
@@ -30,6 +31,10 @@ class VeloServe_Plugin
 
         if (!get_option(VELOSERVE_STATUS_KEY)) {
             add_option(VELOSERVE_STATUS_KEY, self::default_status());
+        }
+
+        if (!get_option(VELOSERVE_IMAGE_QUEUE_KEY)) {
+            add_option(VELOSERVE_IMAGE_QUEUE_KEY, []);
         }
     }
 
@@ -64,6 +69,11 @@ class VeloServe_Plugin
             'opt_minify_html' => 1,
             'opt_prefetch_hints' => 0,
             'opt_prefetch_urls' => '',
+            'opt_lazyload_images' => 1,
+            'opt_image_webp' => 1,
+            'opt_image_avif' => 0,
+            'opt_image_quality' => 82,
+            'opt_image_queue' => 1,
             'cdn_enabled' => 0,
             'cdn_provider' => 'none',
             'cloudflare_zone_id' => '',
@@ -88,6 +98,8 @@ class VeloServe_Plugin
         $this->client = new VeloServe_Client();
         $this->server = new VeloServe_Server();
         $this->cdn_manager = new VeloServe_CDN_Manager();
+        $this->image_optimizer = new VeloServe_Image_Optimizer($this->server);
+        $this->image_optimizer->hooks();
         $this->admin = new VeloServe_Admin();
         $this->admin->hooks();
 

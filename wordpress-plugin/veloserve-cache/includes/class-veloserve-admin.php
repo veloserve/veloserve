@@ -110,6 +110,19 @@ class VeloServe_Admin
         $settings['opt_defer_js'] = !empty($input['opt_defer_js']) ? 1 : 0;
         $settings['opt_minify_html'] = !empty($input['opt_minify_html']) ? 1 : 0;
         $settings['opt_prefetch_hints'] = !empty($input['opt_prefetch_hints']) ? 1 : 0;
+        $settings['opt_lazyload_images'] = !empty($input['opt_lazyload_images']) ? 1 : 0;
+        $settings['opt_image_webp'] = !empty($input['opt_image_webp']) ? 1 : 0;
+        $settings['opt_image_avif'] = !empty($input['opt_image_avif']) ? 1 : 0;
+        $settings['opt_image_queue'] = !empty($input['opt_image_queue']) ? 1 : 0;
+
+        $image_quality = isset($input['opt_image_quality']) ? (int) $input['opt_image_quality'] : (isset($settings['opt_image_quality']) ? (int) $settings['opt_image_quality'] : 82);
+        if ($image_quality < 30) {
+            $image_quality = 30;
+        }
+        if ($image_quality > 100) {
+            $image_quality = 100;
+        }
+        $settings['opt_image_quality'] = $image_quality;
 
         $prefetch_urls = isset($input['opt_prefetch_urls']) ? trim((string) $input['opt_prefetch_urls']) : '';
         if ($prefetch_urls !== '') {
@@ -817,6 +830,23 @@ class VeloServe_Admin
                             <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_prefetch_hints]" value="1" <?php checked((int) $settings['opt_prefetch_hints'], 1); ?> /> Enable prefetch hints</label>
                             <p class="description">Optional list of URLs/origins to prefetch (one per line).</p>
                             <textarea name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_prefetch_urls]" rows="4" class="large-text code" placeholder="https://fonts.gstatic.com&#10;https://cdn.example.com"><?php echo esc_textarea((string) $settings['opt_prefetch_urls']); ?></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Image Optimization</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_lazyload_images]" value="1" <?php checked((int) $settings['opt_lazyload_images'], 1); ?> /> Enable lazy loading defaults for attachment images</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_image_webp]" value="1" <?php checked((int) $settings['opt_image_webp'], 1); ?> /> Generate WebP variants when image queue runs</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_image_avif]" value="1" <?php checked((int) $settings['opt_image_avif'], 1); ?> /> Generate AVIF variants when supported by server image libraries</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_image_queue]" value="1" <?php checked((int) $settings['opt_image_queue'], 1); ?> /> Enable background image compression queue</label>
+                            <p class="description">Queue processes new attachments, compresses source quality, generates modern formats, and submits warm targets to VeloServe cache warm API.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Image Quality</th>
+                        <td>
+                            <input type="number" min="30" max="100" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_image_quality]" value="<?php echo esc_attr((int) $settings['opt_image_quality']); ?>" class="small-text" />
+                            <p class="description">Compression quality for queued image processing. Range: 30-100.</p>
                         </td>
                     </tr>
                 </table>
