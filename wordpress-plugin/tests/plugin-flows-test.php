@@ -317,9 +317,9 @@ assert_true(
     'Purge URL should include domain and path query'
 );
 
-$purge_urls = [];
-$GLOBALS['http_mock'] = function ($url, $args) use (&$purge_urls) {
-    $purge_urls[] = $url;
+$request_urls = [];
+$GLOBALS['http_mock'] = function ($url, $args) use (&$request_urls) {
+    $request_urls[] = $url;
     return [
         'response' => ['code' => 200],
         'body' => json_encode(['success' => true]),
@@ -328,14 +328,45 @@ $GLOBALS['http_mock'] = function ($url, $args) use (&$purge_urls) {
 
 $post = new WP_Post('publish');
 $plugin->purge_cache_on_content_change(42, $post);
-assert_true(count($purge_urls) === 1, 'Content change should trigger one purge request');
-assert_true(strpos($purge_urls[0], '/api/v1/cache/purge') !== false, 'Purge should hit cache purge endpoint');
+$purge_urls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, '/api/v1/cache/purge') !== false;
+}));
+assert_true(count($purge_urls) >= 2, 'Content change should trigger targeted purge requests');
+assert_true(
+    strpos(implode("\n", $purge_urls), 'domain=example.test&path=%2Fpost%2F42') !== false,
+    'Content purge should include changed post path'
+);
 
-$purge_urls = [];
+$request_urls = [];
 $plugin->purge_cache_on_switch_theme();
-assert_true(count($purge_urls) === 1, 'Theme switch should trigger purge request');
+$purge_urls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, '/api/v1/cache/purge') !== false;
+}));
+assert_true(count($purge_urls) >= 2, 'Theme switch should trigger targeted purge requests');
+assert_true(
+    strpos(implode("\n", $purge_urls), 'domain=example.test&path=%2Fwp-json%2F') !== false,
+    'Theme switch purge should include REST index path'
+);
 
-$purge_urls = [];
+$request_urls = [];
+$plugin->purge_cache_on_plugin_change();
+$purge_urls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, '/api/v1/cache/purge') !== false;
+}));
+assert_true(count($purge_urls) >= 2, 'Plugin lifecycle changes should trigger targeted purge requests');
+
+$request_urls = [];
+$plugin->purge_cache_on_order_status_change(1001, 'pending', 'processing', null);
+$purge_urls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, '/api/v1/cache/purge') !== false;
+}));
+assert_true(count($purge_urls) >= 5, 'Commerce order events should trigger storefront purge requests');
+assert_true(
+    strpos(implode("\n", $purge_urls), 'domain=example.test&path=%2Fcheckout%2F') !== false,
+    'Commerce purge should include checkout path'
+);
+
+$request_urls = [];
 update_option('veloserve_settings', [
     'endpoint_url' => 'https://control.example.test',
     'api_token' => 'secret-token',
@@ -346,6 +377,9 @@ update_option('veloserve_settings', [
     'notifications_enabled' => 1,
 ]);
 $plugin->purge_cache_on_content_change(43, $post);
+$purge_urls = array_values(array_filter($request_urls, function ($url) {
+    return strpos($url, '/api/v1/cache/purge') !== false;
+}));
 assert_true(count($purge_urls) === 0, 'Content change should not purge when auto_purge is disabled');
 
 VeloServe_Plugin::deactivate();

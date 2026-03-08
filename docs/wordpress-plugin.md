@@ -139,10 +139,16 @@ Checks:
 
 The plugin automatically sends cache purge requests to the VeloServe endpoint when:
 
-- a post is published or updated (`save_post`)
-- a post is deleted (`deleted_post`)
+- content is published/updated (`save_post`) with targeted invalidation of:
+  - homepage
+  - changed post URL
+  - relevant archive/taxonomy URLs (when available)
+- content is deleted/trashed/untrashed (`deleted_post`, `trashed_post`, `untrashed_post`)
 - the active theme is switched (`switch_theme`)
 - customizer settings are saved (`customize_save_after`)
+- plugins are activated/deactivated (`activated_plugin`, `deactivated_plugin`)
+- plugin/theme upgrades complete (`upgrader_process_complete`)
+- WooCommerce order state changes (`woocommerce_order_status_changed`) with targeted storefront path purges (`/shop/`, `/cart/`, `/checkout/`, `/my-account/`)
 
 A **Purge All Cache** button is available on the admin settings page for manual full-site purges.
 
@@ -159,6 +165,8 @@ Covered:
 - successful endpoint registration updates node state
 - non-2xx registration is reported as failure
 - content change triggers purge request
+- plugin lifecycle events trigger purge requests
+- WooCommerce order status change triggers storefront purges
 - theme switch triggers purge request
 - auto_purge disabled suppresses purge
 - deactivation marks disconnected state
