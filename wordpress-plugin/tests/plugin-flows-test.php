@@ -93,6 +93,18 @@ function wp_remote_post($url, $args = [])
     ];
 }
 
+function wp_remote_get($url, $args = [])
+{
+    if (is_callable($GLOBALS['http_mock'])) {
+        return call_user_func($GLOBALS['http_mock'], $url, $args);
+    }
+
+    return [
+        'response' => ['code' => 200],
+        'body' => json_encode(['status' => 'running', 'server' => 'VeloServe', 'version' => 'dev']),
+    ];
+}
+
 function wp_remote_retrieve_response_code($response)
 {
     return isset($response['response']['code']) ? (int) $response['response']['code'] : 500;
@@ -123,6 +135,11 @@ function untrailingslashit($value)
     return rtrim((string) $value, '/');
 }
 
+function wp_parse_url($url)
+{
+    return parse_url($url);
+}
+
 function wp_json_encode($value)
 {
     return json_encode($value);
@@ -143,6 +160,7 @@ function wp_is_post_revision() { return false; }
 function get_permalink($post_id) { return 'https://example.test/post/' . $post_id; }
 
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-client.php';
+require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-server.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-admin.php';
 require_once __DIR__ . '/../veloserve-cache/includes/class-veloserve-plugin.php';
 
@@ -201,12 +219,79 @@ $GLOBALS['http_mock'] = function ($url, $args) {
 $failure = $plugin->register_with_endpoint();
 assert_true(is_wp_error($failure), 'Register should fail on non-2xx response');
 
+$server = new VeloServe_Server();
+$calls = [];
+$GLOBALS['http_mock'] = function ($url, $args) use (&$calls) {
+    $calls[] = ['url' => $url, 'args' => $args];
+
+    if (strpos($url, '/api/v1/status') !== false) {
+        return [
+            'response' => ['code' => 200],
+            'body' => json_encode([
+                'status' => 'running',
+                'server' => 'veloserve',
+                'version' => '1.2.3',
+                'php_available' => true,
+                'cache_enabled' => true,
+            ]),
+        ];
+    }
+
+    if (strpos($url, '/api/v1/cache/stats') !== false) {
+        return [
+            'response' => ['code' => 200],
+            'body' => json_encode([
+                'cache' => ['hit_rate' => 0.91],
+                'warming' => ['queued_total' => 12],
+            ]),
+        ];
+    }
+
+    if (strpos($url, '/api/v1/cache/purge') !== false) {
+        return [
+            'response' => ['code' => 200],
+            'body' => json_encode(['success' => true]),
+        ];
+    }
+
+    return [
+        'response' => ['code' => 404],
+        'body' => '{}',
+    ];
+};
+
+$detected = $server->detect_server([
+    'endpoint_url' => 'http://127.0.0.1:8080',
+    'api_token' => 'secret-token',
+]);
+assert_true(!is_wp_error($detected), 'Server detection should succeed');
+assert_equals('1.2.3', $detected['version'], 'Detected version should be parsed');
+
+$stats = $server->get_cache_stats([
+    'endpoint_url' => 'http://127.0.0.1:8080',
+    'api_token' => 'secret-token',
+]);
+assert_true(!is_wp_error($stats), 'Cache stats should succeed');
+assert_true(isset($stats['cache']['hit_rate']), 'Cache stats should include hit_rate');
+
+$purge = $server->purge_cache(
+    ['endpoint_url' => 'http://127.0.0.1:8080', 'api_token' => 'secret-token'],
+    ['url' => 'https://example.test/post/42']
+);
+assert_true(!is_wp_error($purge), 'Purge should succeed');
+
+$last_call = $calls[count($calls) - 1];
+assert_true(
+    strpos($last_call['url'], '/api/v1/cache/purge?domain=example.test&path=%2Fpost%2F42') !== false,
+    'Purge URL should include domain and path query'
+);
+
 $purge_urls = [];
 $GLOBALS['http_mock'] = function ($url, $args) use (&$purge_urls) {
     $purge_urls[] = $url;
     return [
         'response' => ['code' => 200],
-        'body' => '{}',
+        'body' => json_encode(['success' => true]),
     ];
 };
 

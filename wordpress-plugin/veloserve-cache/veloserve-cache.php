@@ -21,6 +21,7 @@ define('VELOSERVE_OPTION_KEY', 'veloserve_settings');
 define('VELOSERVE_STATUS_KEY', 'veloserve_status');
 
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-client.php';
+require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-server.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-admin.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-plugin.php';
 
