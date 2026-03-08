@@ -53,6 +53,16 @@ class VeloServe_Server
         return $this->request_json('GET', $this->build_url($api_base, '/api/v1/cache/stats'), $settings);
     }
 
+    public function get_cache_config(array $settings = [])
+    {
+        $api_base = $this->resolve_api_base($settings);
+        if (is_wp_error($api_base)) {
+            return $api_base;
+        }
+
+        return $this->request_json('GET', $this->build_url($api_base, '/api/v1/cache/config'), $settings);
+    }
+
     public function purge_cache(array $settings = [], array $params = [])
     {
         $api_base = $this->resolve_api_base($settings);
