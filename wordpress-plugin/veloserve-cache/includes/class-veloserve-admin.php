@@ -56,6 +56,9 @@ class VeloServe_Admin
     public function sanitize($input)
     {
         $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        if (!is_array($settings)) {
+            $settings = VeloServe_Plugin::default_settings();
+        }
 
         $settings['endpoint_url'] = isset($input['endpoint_url']) ? esc_url_raw(trim($input['endpoint_url'])) : '';
         $settings['api_token'] = isset($input['api_token']) ? sanitize_text_field(trim($input['api_token'])) : '';
@@ -70,6 +73,32 @@ class VeloServe_Admin
         $settings['server_ip_override'] = $server_ip;
         $settings['notifications_enabled'] = !empty($input['notifications_enabled']) ? 1 : 0;
         $settings['auto_purge'] = !empty($input['auto_purge']) ? 1 : 0;
+
+        $cache_ttl = isset($input['cache_ttl']) ? (int) $input['cache_ttl'] : (isset($settings['cache_ttl']) ? (int) $settings['cache_ttl'] : 3600);
+        if ($cache_ttl < 30) {
+            $cache_ttl = 30;
+        }
+        if ($cache_ttl > 604800) {
+            $cache_ttl = 604800;
+        }
+        $settings['cache_ttl'] = $cache_ttl;
+
+        $purge_policy = isset($input['purge_policy']) ? sanitize_text_field((string) $input['purge_policy']) : 'all';
+        if (!in_array($purge_policy, ['all', 'domain', 'path', 'tag'], true)) {
+            $purge_policy = 'all';
+        }
+        $settings['purge_policy'] = $purge_policy;
+        $settings['purge_domain'] = isset($input['purge_domain']) ? sanitize_text_field(trim((string) $input['purge_domain'])) : '';
+        $settings['purge_tag'] = isset($input['purge_tag']) ? sanitize_text_field(trim((string) $input['purge_tag'])) : '';
+
+        $purge_path = isset($input['purge_path']) ? trim((string) $input['purge_path']) : '/';
+        if ($purge_path === '') {
+            $purge_path = '/';
+        }
+        if (strpos($purge_path, '/') !== 0) {
+            $purge_path = '/' . $purge_path;
+        }
+        $settings['purge_path'] = sanitize_text_field($purge_path);
 
         return $settings;
     }
@@ -174,6 +203,7 @@ class VeloServe_Admin
         }
 
         $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $settings = array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []);
         $status = get_option(VELOSERVE_STATUS_KEY, []);
         $tab = $this->active_tab();
         ?>
@@ -385,21 +415,8 @@ class VeloServe_Admin
             exit;
         }
 
-        $response = wp_remote_post(
-            esc_url_raw(untrailingslashit($settings['endpoint_url']) . '/api/v1/cache/purge'),
-            [
-                'timeout' => 10,
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $settings['api_token'],
-                    'Content-Type' => 'application/json',
-                ],
-                'body' => wp_json_encode([
-                    'url' => home_url('/'),
-                    'purge_all' => true,
-                    'source' => 'wordpress-plugin',
-                ]),
-            ]
-        );
+        $server = new VeloServe_Server();
+        $response = $server->purge_cache($settings, $this->build_purge_params_from_settings($settings));
 
         if (is_wp_error($response)) {
             wp_safe_redirect(add_query_arg('veloserve_purge_error', rawurlencode($response->get_error_message()), $this->admin_page_url('cache')));
@@ -633,16 +650,109 @@ class VeloServe_Admin
 
     private function render_cache_tab($settings)
     {
+        $cache_view = $this->active_cache_view();
+        $server_ttl = 'n/a';
+        $server_cache_enabled = 'n/a';
+        $server_error = '';
+
+        if (!empty($settings['endpoint_url']) && !empty($settings['api_token'])) {
+            $server = new VeloServe_Server();
+            $cache_config = $server->get_cache_config($settings);
+            if (is_wp_error($cache_config)) {
+                $server_error = $cache_config->get_error_message();
+            } else {
+                $ttl = $this->get_nested($cache_config, ['cache', 'default_ttl'], null);
+                $server_ttl = is_numeric($ttl) ? number_format_i18n((int) $ttl) . ' seconds' : 'n/a';
+                $server_cache_enabled = !empty($this->get_nested($cache_config, ['cache', 'enabled'], false)) ? 'Enabled' : 'Disabled';
+            }
+        }
+
         ?>
         <h2>Cache Controls</h2>
-        <p>Run immediate full-site purges and verify automatic purge behavior.</p>
-        <p><strong>Auto Purge:</strong> <?php echo !empty($settings['auto_purge']) ? 'Enabled' : 'Disabled'; ?></p>
+        <p>Manage cache behavior, TTL defaults, and purge strategy for this WordPress site.</p>
 
-        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block; margin-top: 8px;">
-            <?php wp_nonce_field('veloserve_purge_all_action', 'veloserve_purge_all_nonce'); ?>
-            <input type="hidden" name="action" value="veloserve_purge_all" />
-            <?php submit_button('Purge All Cache', 'secondary', 'submit', false); ?>
-        </form>
+        <nav class="nav-tab-wrapper" aria-label="Cache Sections" style="margin-bottom: 16px;">
+            <a class="<?php echo $cache_view === 'cache' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('cache')); ?>">Cache</a>
+            <a class="<?php echo $cache_view === 'ttl' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('ttl')); ?>">TTL</a>
+            <a class="<?php echo $cache_view === 'purge' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('purge')); ?>">Purge</a>
+        </nav>
+
+        <?php if ($cache_view === 'cache'): ?>
+            <form method="post" action="options.php">
+                <?php settings_fields('veloserve_settings_group'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row">Auto Purge</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[auto_purge]" value="1" <?php checked((int) $settings['auto_purge'], 1); ?> /> Purge cache on content updates</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Server Cache Status</th>
+                        <td><?php echo esc_html($server_cache_enabled); ?></td>
+                    </tr>
+                </table>
+                <?php submit_button('Save Cache Settings'); ?>
+            </form>
+        <?php elseif ($cache_view === 'ttl'): ?>
+            <form method="post" action="options.php">
+                <?php settings_fields('veloserve_settings_group'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row">Plugin TTL (seconds)</th>
+                        <td>
+                            <input type="number" min="30" max="604800" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[cache_ttl]" value="<?php echo esc_attr((int) $settings['cache_ttl']); ?>" class="small-text" />
+                            <p class="description">Operational TTL preference used by plugin workflows and policy defaults.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Server Default TTL</th>
+                        <td><?php echo esc_html($server_ttl); ?></td>
+                    </tr>
+                </table>
+                <?php submit_button('Save TTL Settings'); ?>
+            </form>
+        <?php else: ?>
+            <form method="post" action="options.php">
+                <?php settings_fields('veloserve_settings_group'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row">Purge Policy</th>
+                        <td>
+                            <select name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[purge_policy]">
+                                <option value="all" <?php selected($settings['purge_policy'], 'all'); ?>>All cache</option>
+                                <option value="domain" <?php selected($settings['purge_policy'], 'domain'); ?>>Domain</option>
+                                <option value="path" <?php selected($settings['purge_policy'], 'path'); ?>>Domain + path</option>
+                                <option value="tag" <?php selected($settings['purge_policy'], 'tag'); ?>>Tag</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Domain</th>
+                        <td><input type="text" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[purge_domain]" value="<?php echo esc_attr($settings['purge_domain']); ?>" class="regular-text" placeholder="example.com" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Path</th>
+                        <td><input type="text" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[purge_path]" value="<?php echo esc_attr($settings['purge_path']); ?>" class="regular-text" placeholder="/shop" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Tag</th>
+                        <td><input type="text" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[purge_tag]" value="<?php echo esc_attr($settings['purge_tag']); ?>" class="regular-text" placeholder="category:news" /></td>
+                    </tr>
+                </table>
+                <?php submit_button('Save Purge Policy', 'secondary', 'submit', false); ?>
+            </form>
+
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block; margin-top: 8px; margin-left: 8px;">
+                <?php wp_nonce_field('veloserve_purge_all_action', 'veloserve_purge_all_nonce'); ?>
+                <input type="hidden" name="action" value="veloserve_purge_all" />
+                <?php submit_button('Run Purge Policy', 'secondary', 'submit', false); ?>
+            </form>
+        <?php endif; ?>
+
+        <?php if ($server_error !== ''): ?>
+            <div class="notice notice-warning inline"><p>Could not load server cache configuration: <?php echo esc_html($server_error); ?></p></div>
+        <?php endif; ?>
         <?php
     }
 
@@ -746,5 +856,44 @@ class VeloServe_Admin
         }
 
         return admin_url('admin.php?page=veloserve&tab=' . rawurlencode($tab));
+    }
+
+    private function active_cache_view()
+    {
+        $view = isset($_GET['cache_view']) ? sanitize_key(wp_unslash($_GET['cache_view'])) : 'cache';
+        return in_array($view, ['cache', 'ttl', 'purge'], true) ? $view : 'cache';
+    }
+
+    private function cache_tab_url($view)
+    {
+        return add_query_arg(
+            [
+                'page' => 'veloserve',
+                'tab' => 'cache',
+                'cache_view' => $view,
+            ],
+            admin_url('admin.php')
+        );
+    }
+
+    private function build_purge_params_from_settings($settings)
+    {
+        $policy = isset($settings['purge_policy']) ? (string) $settings['purge_policy'] : 'all';
+        if ($policy === 'domain' && !empty($settings['purge_domain'])) {
+            return ['domain' => (string) $settings['purge_domain']];
+        }
+
+        if ($policy === 'path' && !empty($settings['purge_domain']) && !empty($settings['purge_path'])) {
+            return [
+                'domain' => (string) $settings['purge_domain'],
+                'path' => (string) $settings['purge_path'],
+            ];
+        }
+
+        if ($policy === 'tag' && !empty($settings['purge_tag'])) {
+            return ['tag' => (string) $settings['purge_tag']];
+        }
+
+        return [];
     }
 }

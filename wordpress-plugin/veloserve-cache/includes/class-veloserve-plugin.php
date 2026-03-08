@@ -49,6 +49,11 @@ class VeloServe_Plugin
             'guest_mode' => 0,
             'server_ip_override' => '',
             'notifications_enabled' => 1,
+            'cache_ttl' => 3600,
+            'purge_policy' => 'all',
+            'purge_domain' => '',
+            'purge_path' => '/',
+            'purge_tag' => '',
         ];
     }
 
