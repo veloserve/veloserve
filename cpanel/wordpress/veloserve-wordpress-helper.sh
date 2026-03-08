@@ -4,7 +4,7 @@ set -euo pipefail
 PLUGIN_SLUG="veloserve-cache"
 DEFAULT_PLUGIN_PACKAGE="/usr/local/src/veloserve/wordpress-plugin/veloserve-cache.zip"
 
-HELPER_VERSION="1.0.0"
+HELPER_VERSION="1.0.5"
 
 usage() {
   cat <<EOF

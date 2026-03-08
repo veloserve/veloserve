@@ -69,7 +69,7 @@ Used by `install.sh`:
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `VELOSERVE_VERSION` | Version to install | `latest` | `v1.0.0` |
+| `VELOSERVE_VERSION` | Version to install | `latest` | `v1.0.5` |
 | `VELOSERVE_INSTALL_DIR` | Installation directory | `/usr/local/bin` | `/opt/veloserve` |
 
 ## Usage Examples

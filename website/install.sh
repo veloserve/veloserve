@@ -224,7 +224,7 @@ main() {
         echo -e "${BLUE}→ Fetching latest version...${NC}"
         version=$(get_latest_version)
         if [ -z "${version}" ]; then
-            version="v1.0.0"  # Fallback
+            version="v1.0.5"  # Fallback
         fi
     else
         version="${VERSION}"

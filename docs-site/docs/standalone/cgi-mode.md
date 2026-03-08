@@ -145,7 +145,7 @@ VeloServe sets all standard CGI variables:
 | `SERVER_PORT` | `80` |
 | `HTTPS` | `on` or `off` |
 | `GATEWAY_INTERFACE` | `CGI/1.1` |
-| `SERVER_SOFTWARE` | `VeloServe/1.0.4` |
+| `SERVER_SOFTWARE` | `VeloServe/1.0.5` |
 | `REDIRECT_STATUS` | `200` |
 
 ## Clean URLs

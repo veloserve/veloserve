@@ -5,7 +5,7 @@
 
 set -e
 
-VELOSERVE_VERSION="1.0.0"
+VELOSERVE_VERSION="1.0.5"
 PLUGIN_DIR="/usr/local/cpanel/whostmgr/docroot/cgi/veloserve"
 REGISTRY_DIR="/var/cpanel/apps"
 
