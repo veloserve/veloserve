@@ -1,6 +1,6 @@
 [package]
 name = "veloserve"
-version = "1.0.0"
+version = "1.0.6"
 edition = "2021"
 authors = ["VeloServe Team"]
 description = "High-performance web server with integrated PHP support"

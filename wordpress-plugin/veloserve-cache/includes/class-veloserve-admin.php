@@ -565,7 +565,7 @@ class VeloServe_Admin
     {
         $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
         printf(
-            '<input type="url" name="%1$s[endpoint_url]" value="%2$s" class="regular-text" placeholder="https://control.veloserve.local" required />',
+            '<input type="url" name="%1$s[endpoint_url]" value="%2$s" class="regular-text" placeholder="http://127.0.0.1 (cPanel) or http://127.0.0.1:8080 (standalone)" required />',
             esc_attr(VELOSERVE_OPTION_KEY),
             esc_attr($settings['endpoint_url'])
         );

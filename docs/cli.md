@@ -240,7 +240,7 @@ veloserve version
 **Output:**
 
 ```
-VeloServe 1.0.0
+VeloServe 1.0.5
 PHP mode: CGI (php-cgi 8.3.6)
 Built with: Rust 1.75.0
 Features: http2, tls, cache

@@ -51,7 +51,8 @@ After activation, open `wp-admin -> VeloServe -> Connection`.
 
 | Deployment | Endpoint URL |
 |-----------|--------------|
-| Same server (cPanel / standalone) | `http://127.0.0.1` or `http://127.0.0.1:8080` |
+| Same server (cPanel / WHM) | `http://127.0.0.1` (VeloServe listens on port 80 after Apache swap) |
+| Same server (standalone / dev) | `http://127.0.0.1:8080` |
 | VeloPanel managed | Shown in VeloPanel under `Server -> API Endpoint` |
 | Remote / cloud | Public or internal URL of the VeloServe node, for example `https://veloserve.example.com` |
 

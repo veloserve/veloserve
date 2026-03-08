@@ -12,9 +12,19 @@ var VS = {
     },
 
     post: function(action, body, cb) {
-        fetch('?action=' + action, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body })
-            .then(function(r){ return r.json(); })
-            .then(function(d){ if (cb) cb(d); })
+        fetch('?action=' + action, { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body || '' })
+            .then(function(r) { return r.text(); })
+            .then(function(text) {
+                var d;
+                text = (text || '').trim();
+                try {
+                    d = JSON.parse(text);
+                } catch (e) {
+                    var m = text.match(/\{[\s\S]*\}/);
+                    try { d = m ? JSON.parse(m[0]) : null; } catch (e2) { d = null; }
+                }
+                if (cb) cb(d || { success: 0, message: 'Invalid response from server' }, text);
+            })
             .catch(function(e){ VS.toast('Error: ' + e, 'danger'); });
     },
 
@@ -112,5 +122,72 @@ var VS = {
     startLogRefresh: function() {
         if (VS._logTimer) { clearInterval(VS._logTimer); VS._logTimer = null; return; }
         VS._logTimer = setInterval(VS.refreshLogs, 5000);
+    },
+
+    createApiToken: function(btn) {
+        if (!btn) btn = document.getElementById('vs-create-token-btn');
+        var block = document.getElementById('vs-new-token-block');
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+        VS.post('api_token_create', 'action=api_token_create', function(d, rawText) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Create API token'; }
+            if (d.success && d.token && block) {
+                block.innerHTML = '<div class="vs-alert vs-alert-success mt-4">' +
+                    '<strong>New token (copy now - it will not be shown again):</strong>' +
+                    '<div class="vs-token-display mt-2"><code id="vs-new-token">' + VS.escapeHtml(d.token) + '</code> ' +
+                    '<button type="button" class="vs-btn vs-btn-sm" onclick="VS.copyTokenEl(\'vs-new-token\')">Copy</button></div></div>';
+                VS.toast('Token created. Copy it now.', 'success');
+            } else if (block && rawText !== undefined) {
+                block.innerHTML = '<div class="vs-alert vs-alert-danger mt-4">' +
+                    '<strong>Server returned non-JSON response (first 600 chars):</strong>' +
+                    '<pre class="vs-debug-pre">' + VS.escapeHtml(rawText.substring(0, 600)) + '</pre></div>';
+                VS.toast(d.message || 'Failed to create token', 'danger');
+            } else {
+                VS.toast(d.message || 'Failed to create token', 'danger');
+            }
+        });
+    },
+
+    escapeHtml: function(s) {
+        if (!s) return '';
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    },
+
+    copyTokenFromRow: function(btn) {
+        var row = btn.closest('tr');
+        var code = row ? row.querySelector('code[data-token]') : null;
+        var token = code ? code.getAttribute('data-token') : null;
+        if (token) VS.copyToClipboard(token, btn);
+    },
+
+    copyTokenEl: function(id) {
+        var el = document.getElementById(id);
+        if (el) VS.copyToClipboard(el.textContent.trim(), el.nextElementSibling);
+    },
+
+    copyToClipboard: function(text, feedbackEl) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                VS.toast('Copied to clipboard', 'success');
+                if (feedbackEl) { feedbackEl.textContent = 'Copied!'; setTimeout(function(){ feedbackEl.textContent = 'Copy'; }, 2000); }
+            }).catch(function() { VS.fallbackCopy(text, feedbackEl); });
+        } else {
+            VS.fallbackCopy(text, feedbackEl);
+        }
+    },
+
+    fallbackCopy: function(text, feedbackEl) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            VS.toast('Copied to clipboard', 'success');
+            if (feedbackEl) { feedbackEl.textContent = 'Copied!'; setTimeout(function(){ feedbackEl.textContent = 'Copy'; }, 2000); }
+        } catch (e) { VS.toast('Copy failed', 'danger'); }
+        document.body.removeChild(ta);
     }
 };

@@ -230,7 +230,7 @@ VeloServe sets all standard CGI environment variables:
 | `SERVER_PROTOCOL` | Protocol version | `HTTP/1.1` |
 | `HTTPS` | Is HTTPS | `on` or `off` |
 | `GATEWAY_INTERFACE` | CGI version | `CGI/1.1` |
-| `SERVER_SOFTWARE` | Server name | `VeloServe/1.0.0` |
+| `SERVER_SOFTWARE` | Server name | `VeloServe/1.0.5` |
 | `REDIRECT_STATUS` | Required by PHP-CGI | `200` |
 
 ## Clean URLs / PATH_INFO

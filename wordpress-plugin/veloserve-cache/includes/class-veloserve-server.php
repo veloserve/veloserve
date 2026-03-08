@@ -11,7 +11,9 @@ class VeloServe_Server
     public function __construct(?array $default_api_bases = null)
     {
         $this->default_api_bases = $default_api_bases ?: [
-            'http://127.0.0.1:8080',
+            'http://127.0.0.1',       // cPanel/WHM (VeloServe on port 80 after Apache swap)
+            'http://localhost',
+            'http://127.0.0.1:8080',  // standalone / dev
             'http://localhost:8080',
         ];
     }

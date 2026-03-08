@@ -1,7 +1,7 @@
 # VeloServe Web Server
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version">
   <img src="https://img.shields.io/badge/rust-1.70%2B-orange" alt="Rust">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/php-embedded-purple" alt="PHP">

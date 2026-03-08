@@ -5,7 +5,7 @@
 
 set -e
 
-VELOSERVE_VERSION="1.0.0"
+VELOSERVE_VERSION="1.0.5"
 PLUGIN_DIR="/usr/local/cpanel/whostmgr/docroot/cgi/veloserve"
 REGISTRY_DIR="/var/cpanel/apps"
 
@@ -50,12 +50,14 @@ mkdir -p /usr/local/veloserve/cpanel
 cp import-apache-and-swap.sh /usr/local/veloserve/cpanel/ 2>/dev/null || true
 chmod +x /usr/local/veloserve/cpanel/import-apache-and-swap.sh 2>/dev/null || true
 
-# Create cPanel App Registry entry
+# Create cPanel App Registry entry (displayname + entryurl required for Plugins sidebar)
 cat > ${REGISTRY_DIR}/veloserve.conf << 'EOF'
 name=veloserve
 service=whostmgr
 user=root
 url=/cgi/veloserve/veloserve.cgi
+entryurl=veloserve/veloserve.cgi
+displayname=VeloServe
 acls=all
 EOF
 
