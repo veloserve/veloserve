@@ -9,6 +9,7 @@ class VeloServe_Plugin
     private static $instance;
 
     private $client;
+    private $server;
     private $admin;
 
     public static function instance()
@@ -60,6 +61,7 @@ class VeloServe_Plugin
     public function bootstrap()
     {
         $this->client = new VeloServe_Client();
+        $this->server = new VeloServe_Server();
         $this->admin = new VeloServe_Admin();
         $this->admin->hooks();
 
@@ -135,24 +137,10 @@ class VeloServe_Plugin
     private function send_purge_for_url($url)
     {
         $settings = get_option(VELOSERVE_OPTION_KEY, self::default_settings());
-
-        if (empty($settings['endpoint_url']) || empty($settings['api_token'])) {
-            return;
+        if (!$this->server) {
+            $this->server = new VeloServe_Server();
         }
 
-        wp_remote_post(
-            esc_url_raw(untrailingslashit($settings['endpoint_url']) . '/api/v1/cache/purge'),
-            [
-                'timeout' => 8,
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $settings['api_token'],
-                    'Content-Type' => 'application/json',
-                ],
-                'body' => wp_json_encode([
-                    'url' => $url,
-                    'source' => 'wordpress-plugin',
-                ]),
-            ]
-        );
+        $this->server->purge_cache($settings, ['url' => $url]);
     }
 }
