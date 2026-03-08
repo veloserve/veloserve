@@ -2,6 +2,8 @@
 
 This document covers plugin architecture, install/activation flow, cPanel discovery automation, rollback, and troubleshooting.
 
+Operator-facing setup instructions for docs.veloserve.io live in `docs-site/docs/guides/wordpress-plugin.md`. Use that page for customer onboarding, endpoint/API-token setup, and tab-by-tab admin guidance.
+
 ## Overview
 
 Plugin slug: `veloserve-cache`
