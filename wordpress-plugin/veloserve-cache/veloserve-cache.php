@@ -19,12 +19,14 @@ define('VELOSERVE_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
 define('VELOSERVE_OPTION_KEY', 'veloserve_settings');
 define('VELOSERVE_STATUS_KEY', 'veloserve_status');
+define('VELOSERVE_IMAGE_QUEUE_KEY', 'veloserve_image_queue');
 
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-client.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-server.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-cdn-provider.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-cdn-cloudflare-provider.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-cdn-manager.php';
+require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-image-optimizer.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-admin.php';
 require_once VELOSERVE_PLUGIN_DIR . 'includes/class-veloserve-plugin.php';
 

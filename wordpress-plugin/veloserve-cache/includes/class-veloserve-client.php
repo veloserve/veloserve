@@ -28,6 +28,13 @@ class VeloServe_Client
                 'minify_html' => !empty($settings['opt_minify_html']),
                 'prefetch_hints' => !empty($settings['opt_prefetch_hints']),
                 'prefetch_urls' => $this->parse_prefetch_urls($settings),
+                'images' => [
+                    'lazyload' => !empty($settings['opt_lazyload_images']),
+                    'webp' => !empty($settings['opt_image_webp']),
+                    'avif' => !empty($settings['opt_image_avif']),
+                    'quality' => isset($settings['opt_image_quality']) ? (int) $settings['opt_image_quality'] : 82,
+                    'queue_enabled' => !empty($settings['opt_image_queue']),
+                ],
             ],
         ];
 

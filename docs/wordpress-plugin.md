@@ -18,6 +18,7 @@ Primary outcomes in v1:
 - purges cache on content mutations, theme switches, and customizer saves (when enabled)
 - supports optional CDN purge cascading with Cloudflare provider integration
 - exposes page optimization controls (CSS/JS/HTML minify/combine/defer, critical CSS, prefetch hints)
+- includes image optimization controls (lazyload defaults, queued compression, WebP/AVIF conversion flow)
 - provides manual Purge All Cache button
 - supports cPanel automation through helper contract
 
@@ -66,8 +67,12 @@ zip -r veloserve-cache.zip veloserve-cache
 - `Notifications` for admin success/error notices
 4. Keep `Auto Purge` enabled unless debugging cache behavior
 5. Configure optional optimization controls under `Cache -> Optimization`
-6. Click `Register Site with VeloServe`
-7. Verify status shows:
+6. Configure image optimization options under `Cache -> Optimization`:
+- lazyload default attributes for attachment images
+- WebP/AVIF generation toggles
+- background image queue + quality target
+7. Click `Register Site with VeloServe`
+8. Verify status shows:
 - `Connection: Connected`
 - non-empty `Node ID`
 
@@ -189,6 +194,7 @@ Covered:
 - activation creates options
 - option persistence in settings store
 - optimization controls are sanitized/persisted and included in register payload
+- image optimization controls are sanitized/persisted and included in register payload
 - successful endpoint registration updates node state
 - non-2xx registration is reported as failure
 - content change triggers purge request
@@ -197,6 +203,7 @@ Covered:
 - CDN purge cascade triggers Cloudflare API purge requests when enabled
 - WooCommerce order status change triggers storefront purges
 - theme switch triggers purge request
+- cache warm API integration works for image queue targets
 - auto_purge disabled suppresses purge
 - deactivation marks disconnected state
 
