@@ -200,8 +200,7 @@ class VeloServe_Plugin
 
         $this->purge_targets([
             ['url' => home_url('/')],
-            ['path' => '/'],
-            ['path' => '/wp-json/'],
+            ['url' => home_url('/wp-json/')],
         ]);
     }
 
@@ -213,7 +212,7 @@ class VeloServe_Plugin
 
         $this->purge_targets([
             ['url' => home_url('/')],
-            ['path' => '/wp-json/'],
+            ['url' => home_url('/wp-json/')],
         ]);
     }
 
@@ -235,7 +234,7 @@ class VeloServe_Plugin
 
         $this->purge_targets([
             ['url' => home_url('/')],
-            ['path' => '/wp-json/'],
+            ['url' => home_url('/wp-json/')],
         ]);
     }
 
@@ -247,10 +246,10 @@ class VeloServe_Plugin
 
         $targets = [
             ['url' => home_url('/')],
-            ['path' => '/shop/'],
-            ['path' => '/cart/'],
-            ['path' => '/checkout/'],
-            ['path' => '/my-account/'],
+            ['url' => home_url('/shop/')],
+            ['url' => home_url('/cart/')],
+            ['url' => home_url('/checkout/')],
+            ['url' => home_url('/my-account/')],
         ];
 
         if (function_exists('wc_get_page_permalink')) {

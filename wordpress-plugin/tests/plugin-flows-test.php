@@ -163,6 +163,16 @@ function esc_url($value)
     return trim((string) $value);
 }
 
+function sanitize_key($value)
+{
+    return strtolower(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) $value));
+}
+
+function esc_sql($value)
+{
+    return addslashes((string) $value);
+}
+
 class WP_Post
 {
     public $post_status;
