@@ -745,13 +745,15 @@ docker run -d -p 80:80 -p 443:443 \
 - [x] Basic page caching
 - [x] Basic CLI tools
 
-### Phase 2: Enhanced Caching (Current)
+### Phase 2: Enhanced Caching ✅
 - [x] Multi-layer cache system
 - [x] Cache tagging and smart invalidation
 - [x] Magento 2 support (cache invalidation foundations)
 - [x] Redis integration
 - [x] Cache warming/preloading
-- [ ] WordPress plugin
+- [x] WordPress plugin
+
+> Release note: after this branch is merged to prod, publish a new release and rebuild fresh binaries. Phase 1 and Phase 2 introduced substantial WordPress, cache, purge, and tooling changes that should ship together in the next release artifact set.
 
 ### Phase 3: Production Ready
 - [ ] HTTP/3 (QUIC) support

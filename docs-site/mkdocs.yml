@@ -97,6 +97,7 @@ nav:
     - Logging: configuration/logging.md
   - Guides:
     - WordPress: guides/wordpress.md
+    - WordPress Plugin: guides/wordpress-plugin.md
     - Magento 2: guides/magento2.md
     - Magento Cache Invalidation: guides/magento-cache-invalidation.md
     - Performance Tuning: guides/performance.md

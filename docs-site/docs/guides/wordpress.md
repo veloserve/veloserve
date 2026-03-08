@@ -2,6 +2,8 @@
 
 This guide covers running WordPress on VeloServe with optimal performance settings.
 
+For plugin setup, control-plane connection, CDN purge cascading, and operator workflows, see the dedicated [WordPress Plugin guide](wordpress-plugin.md).
+
 ## Requirements
 
 - VeloServe installed ([Installation Guide](../getting-started/installation.md))
