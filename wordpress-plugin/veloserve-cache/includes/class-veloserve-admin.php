@@ -11,6 +11,8 @@ class VeloServe_Admin
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_post_veloserve_register', [$this, 'handle_register']);
+        add_action('admin_post_veloserve_purge_all', [$this, 'handle_purge_all']);
+        add_action('admin_notices', [$this, 'render_notices']);
     }
 
     public function add_menu()
@@ -48,6 +50,70 @@ class VeloServe_Admin
         return $settings;
     }
 
+    public function render_notices()
+    {
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'toplevel_page_veloserve') {
+            return;
+        }
+
+        if (!empty($_GET['veloserve_registered'])) {
+            printf('<div class="notice notice-success is-dismissible"><p>%s</p></div>', 'Site registered with VeloServe successfully.');
+        }
+
+        if (!empty($_GET['veloserve_error'])) {
+            printf('<div class="notice notice-error is-dismissible"><p>Registration error: %s</p></div>', esc_html(urldecode($_GET['veloserve_error'])));
+        }
+
+        if (!empty($_GET['veloserve_purged'])) {
+            printf('<div class="notice notice-success is-dismissible"><p>%s</p></div>', 'Full cache purge request sent.');
+        }
+
+        if (!empty($_GET['veloserve_purge_error'])) {
+            printf('<div class="notice notice-error is-dismissible"><p>Purge error: %s</p></div>', esc_html(urldecode($_GET['veloserve_purge_error'])));
+        }
+    }
+
+    public function handle_purge_all()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_purge_all_action', 'veloserve_purge_all_nonce');
+
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+
+        if (empty($settings['endpoint_url']) || empty($settings['api_token'])) {
+            wp_safe_redirect(add_query_arg('veloserve_purge_error', rawurlencode('Endpoint URL and API token are required.'), wp_get_referer()));
+            exit;
+        }
+
+        $response = wp_remote_post(
+            esc_url_raw(untrailingslashit($settings['endpoint_url']) . '/api/v1/cache/purge'),
+            [
+                'timeout' => 10,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $settings['api_token'],
+                    'Content-Type' => 'application/json',
+                ],
+                'body' => wp_json_encode([
+                    'url' => home_url('/'),
+                    'purge_all' => true,
+                    'source' => 'wordpress-plugin',
+                ]),
+            ]
+        );
+
+        if (is_wp_error($response)) {
+            wp_safe_redirect(add_query_arg('veloserve_purge_error', rawurlencode($response->get_error_message()), wp_get_referer()));
+            exit;
+        }
+
+        wp_safe_redirect(add_query_arg('veloserve_purged', '1', wp_get_referer()));
+        exit;
+    }
+
     public function render_page()
     {
         if (!current_user_can('manage_options')) {
@@ -76,6 +142,12 @@ class VeloServe_Admin
                     <th>Last registration</th>
                     <td><?php echo !empty($status['registered_at']) ? esc_html($status['registered_at']) : 'Never'; ?></td>
                 </tr>
+                <?php if (!empty($status['last_error'])): ?>
+                <tr>
+                    <th>Last error</th>
+                    <td style="color: #d63638;"><?php echo esc_html($status['last_error']); ?></td>
+                </tr>
+                <?php endif; ?>
                 </tbody>
             </table>
 
@@ -87,10 +159,16 @@ class VeloServe_Admin
                 ?>
             </form>
 
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
                 <?php wp_nonce_field('veloserve_register_action', 'veloserve_register_nonce'); ?>
                 <input type="hidden" name="action" value="veloserve_register" />
-                <?php submit_button('Register Site with VeloServe', 'primary'); ?>
+                <?php submit_button('Register Site with VeloServe', 'primary', 'submit', false); ?>
+            </form>
+
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block; margin-left: 8px;">
+                <?php wp_nonce_field('veloserve_purge_all_action', 'veloserve_purge_all_nonce'); ?>
+                <input type="hidden" name="action" value="veloserve_purge_all" />
+                <?php submit_button('Purge All Cache', 'secondary', 'submit', false); ?>
             </form>
         </div>
         <?php

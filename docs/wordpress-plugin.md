@@ -6,11 +6,17 @@ This document covers plugin architecture, install/activation flow, cPanel discov
 
 Plugin slug: `veloserve-cache`
 
+The plugin is **server-agnostic** and works on any WordPress installation -- cPanel, VeloPanel
+standalone, Docker, bare metal, or cloud hosting. It uses only standard WordPress APIs with no
+hosting-environment dependencies. The cPanel helper script is an optional automation layer for
+bulk deployment on cPanel servers.
+
 Primary outcomes in v1:
 
 - registers WordPress site with VeloServe endpoint
-- exposes admin status and action controls
-- purges cache on content mutations (when enabled)
+- exposes admin status and action controls with success/error notices
+- purges cache on content mutations, theme switches, and customizer saves (when enabled)
+- provides manual Purge All Cache button
 - supports cPanel automation through helper contract
 
 ## Plugin Architecture
@@ -124,6 +130,19 @@ Checks:
 - plugin zip contains `veloserve-cache/veloserve-cache.php`
 - rerun with `--force` when replacing existing install
 
+## Cache Purge
+
+The plugin automatically sends cache purge requests to the VeloServe endpoint when:
+
+- a post is published or updated (`save_post`)
+- a post is deleted (`deleted_post`)
+- the active theme is switched (`switch_theme`)
+- customizer settings are saved (`customize_save_after`)
+
+A **Purge All Cache** button is available on the admin settings page for manual full-site purges.
+
+Auto-purge can be disabled via the `Auto Purge` checkbox in plugin settings.
+
 ## Test Coverage
 
 Plugin flow tests: `wordpress-plugin/tests/plugin-flows-test.php`
@@ -134,10 +153,22 @@ Covered:
 - option persistence in settings store
 - successful endpoint registration updates node state
 - non-2xx registration is reported as failure
+- content change triggers purge request
+- theme switch triggers purge request
+- auto_purge disabled suppresses purge
 - deactivation marks disconnected state
+
+cPanel helper fixture tests: `cpanel/tests/wordpress-helper-fixture.sh`
+
+Covered:
+
+- discovery finds WordPress installs under home directories
+- install deploys plugin zip to correct location
+- installed plugin files are present after deployment
 
 Run:
 
 ```bash
 wordpress-plugin/tests/run-tests.sh
+cpanel/tests/wordpress-helper-fixture.sh
 ```
