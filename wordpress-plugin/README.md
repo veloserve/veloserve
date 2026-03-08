@@ -2,10 +2,16 @@
 
 This directory contains the first shippable iteration of the VeloServe WordPress plugin.
 
+The plugin is **server-agnostic** -- it works on any WordPress installation regardless of hosting
+environment (cPanel, VeloPanel standalone, Docker, bare metal, cloud). It uses only standard
+WordPress HTTP and options APIs; there are no cPanel-specific dependencies. The separate
+cPanel helper script (`cpanel/wordpress/veloserve-wordpress-helper.sh`) provides optional
+automation for bulk discovery and deployment on cPanel servers.
+
 ## Layout
 
 - `veloserve-cache/`: installable plugin source
-- `tests/`: lightweight flow tests (activation, settings persistence, registration success/failure)
+- `tests/`: lightweight flow tests (activation, settings persistence, registration, cache purge)
 
 ## Packaging
 

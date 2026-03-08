@@ -16,8 +16,8 @@ touch "$TMP_DIR/home/bob/www/wp-config.php"
 
 output="$($HELPER discover --home-root "$TMP_DIR/home")"
 
-echo "$output" | rg '"user":"alice"' >/dev/null
-echo "$output" | rg '"user":"bob"' >/dev/null
+echo "$output" | grep -q '"user":"alice"'
+echo "$output" | grep -q '"user":"bob"'
 
 echo "Discovery fixture test passed."
 
@@ -34,7 +34,7 @@ PHP
 
 install_json="$($HELPER install --site-path "$TMP_DIR/home/alice/public_html" --plugin-zip "$TMP_DIR/veloserve-cache.zip")"
 
-echo "$install_json" | rg '"status":"installed"' >/dev/null
+echo "$install_json" | grep -q '"status":"installed"'
 [[ -f "$TMP_DIR/home/alice/public_html/wp-content/plugins/veloserve-cache/veloserve-cache.php" ]]
 
 echo "Install fixture test passed."

@@ -65,6 +65,8 @@ class VeloServe_Plugin
 
         add_action('save_post', [$this, 'purge_cache_on_content_change'], 10, 2);
         add_action('deleted_post', [$this, 'purge_cache_on_delete'], 10, 1);
+        add_action('switch_theme', [$this, 'purge_cache_on_switch_theme']);
+        add_action('customize_save_after', [$this, 'purge_cache_on_switch_theme']);
     }
 
     public function register_with_endpoint()
@@ -111,6 +113,16 @@ class VeloServe_Plugin
     }
 
     public function purge_cache_on_delete($post_id)
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, self::default_settings());
+        if (empty($settings['auto_purge'])) {
+            return;
+        }
+
+        $this->send_purge_for_url(home_url('/'));
+    }
+
+    public function purge_cache_on_switch_theme()
     {
         $settings = get_option(VELOSERVE_OPTION_KEY, self::default_settings());
         if (empty($settings['auto_purge'])) {

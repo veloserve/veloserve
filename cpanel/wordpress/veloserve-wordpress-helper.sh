@@ -4,15 +4,19 @@ set -euo pipefail
 PLUGIN_SLUG="veloserve-cache"
 DEFAULT_PLUGIN_PACKAGE="/usr/local/src/veloserve/wordpress-plugin/veloserve-cache.zip"
 
+HELPER_VERSION="1.0.0"
+
 usage() {
   cat <<EOF
 Usage:
   $0 discover [--home-root /home]
   $0 install --site-path <wp-root> [--plugin-zip <path>] [--force]
+  $0 version
 
 Commands:
   discover    Scan cPanel home directories and print JSON with discovered WordPress installs
   install     Install VeloServe plugin zip into a discovered WordPress site
+  version     Print helper version
 EOF
 }
 
@@ -110,6 +114,12 @@ install_plugin() {
     exit 1
   fi
 
+  local site_owner
+  site_owner="$(stat -c '%U:%G' "$site_path" 2>/dev/null || stat -f '%Su:%Sg' "$site_path" 2>/dev/null)"
+  if [[ -n "$site_owner" ]]; then
+    chown -R "$site_owner" "$plugin_dir" 2>/dev/null || true
+  fi
+
   printf '{"status":"installed","site_path":"%s","plugin_dir":"%s"}\n' "$site_path" "$plugin_dir"
 }
 
@@ -137,6 +147,9 @@ main() {
       ;;
     install)
       install_plugin "$@"
+      ;;
+    version)
+      printf '{"version":"%s"}\n' "$HELPER_VERSION"
       ;;
     *)
       usage

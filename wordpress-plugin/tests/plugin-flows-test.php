@@ -201,6 +201,33 @@ $GLOBALS['http_mock'] = function ($url, $args) {
 $failure = $plugin->register_with_endpoint();
 assert_true(is_wp_error($failure), 'Register should fail on non-2xx response');
 
+$purge_urls = [];
+$GLOBALS['http_mock'] = function ($url, $args) use (&$purge_urls) {
+    $purge_urls[] = $url;
+    return [
+        'response' => ['code' => 200],
+        'body' => '{}',
+    ];
+};
+
+$post = new WP_Post('publish');
+$plugin->purge_cache_on_content_change(42, $post);
+assert_true(count($purge_urls) === 1, 'Content change should trigger one purge request');
+assert_true(strpos($purge_urls[0], '/api/v1/cache/purge') !== false, 'Purge should hit cache purge endpoint');
+
+$purge_urls = [];
+$plugin->purge_cache_on_switch_theme();
+assert_true(count($purge_urls) === 1, 'Theme switch should trigger purge request');
+
+$purge_urls = [];
+update_option('veloserve_settings', [
+    'endpoint_url' => 'https://control.example.test',
+    'api_token' => 'secret-token',
+    'auto_purge' => 0,
+]);
+$plugin->purge_cache_on_content_change(43, $post);
+assert_true(count($purge_urls) === 0, 'Content change should not purge when auto_purge is disabled');
+
 VeloServe_Plugin::deactivate();
 assert_equals(false, get_option('veloserve_status')['connected'], 'Deactivate should set connected=false');
 
