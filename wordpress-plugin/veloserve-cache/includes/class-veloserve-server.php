@@ -141,14 +141,12 @@ class VeloServe_Server
             }
         }
 
-        if ($domain !== '' && $path !== '') {
-            $query['domain'] = $domain;
-            $query['path'] = $path;
-            return $query;
-        }
-
         if ($domain !== '') {
             $query['domain'] = $domain;
+        }
+
+        if ($path !== '') {
+            $query['path'] = $path;
         }
 
         return $query;
