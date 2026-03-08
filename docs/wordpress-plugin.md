@@ -19,6 +19,7 @@ Primary outcomes in v1:
 - supports optional CDN purge cascading with Cloudflare provider integration
 - exposes page optimization controls (CSS/JS/HTML minify/combine/defer, critical CSS, prefetch hints)
 - includes image optimization controls (lazyload defaults, queued compression, WebP/AVIF conversion flow)
+- includes toolbox controls for database optimize, sitemap crawler warming, settings import/export, and debug snapshot download
 - provides manual Purge All Cache button
 - supports cPanel automation through helper contract
 
@@ -184,6 +185,19 @@ When enabled, purge operations cascade to Cloudflare using equivalent targets:
 - full purge policy -> Cloudflare `purge_everything`
 
 Auto-purge can be disabled via the `Auto Purge` checkbox in plugin settings.
+
+## Toolbox Utilities (Phase 4)
+
+Path: `wp-admin -> VeloServe -> Tools`
+
+Available operations:
+
+- **Purge Cache Now**: runs the configured purge flow immediately (same behavior as cache tab purge action).
+- **Optimize Database Tables**: executes `OPTIMIZE TABLE` for discovered WordPress-prefixed tables and returns summary count.
+- **Warm from Sitemap**: crawls common sitemap entry points (`/wp-sitemap.xml`, `/sitemap.xml`, `/sitemap_index.xml`) and submits discovered URLs to `/api/v1/cache/warm` with trigger `wordpress-sitemap-crawler`.
+- **Export Settings**: downloads current plugin settings as JSON for backup/migration.
+- **Import Settings**: uploads JSON settings and applies them through the same sanitize pipeline as admin forms.
+- **Download Debug Snapshot**: emits diagnostic JSON including plugin status/settings, site environment, and server/cache diagnostic API responses when credentials are configured.
 
 ## Test Coverage
 

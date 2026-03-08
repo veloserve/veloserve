@@ -15,6 +15,7 @@ Current plugin capabilities include:
 - CDN purge cascading (Cloudflare)
 - Page optimization controls (CSS/JS/HTML minify/combine/defer, critical CSS, prefetch hints)
 - Image optimization stack (lazyload defaults, queued compression, WebP/AVIF generation, warm queue integration)
+- Toolbox operations: database table optimize, sitemap crawler warm trigger, settings import/export, debug snapshot export
 
 ## Layout
 

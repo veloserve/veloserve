@@ -567,6 +567,34 @@ $purge_urls = array_values(array_filter($request_urls, function ($url) {
 }));
 assert_true(count($purge_urls) === 0, 'Content change should not purge when auto_purge is disabled');
 
+$sitemap_index_xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.test/post-sitemap.xml</loc></sitemap>
+  <sitemap><loc>https://example.test/page-sitemap.xml</loc></sitemap>
+</sitemapindex>
+XML;
+
+$urlset_xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.test/</loc></url>
+  <url><loc>https://example.test/post/42</loc></url>
+</urlset>
+XML;
+
+$admin_reflection = new ReflectionClass(VeloServe_Admin::class);
+$parse_sitemap_xml = $admin_reflection->getMethod('parse_sitemap_xml');
+$parse_sitemap_xml->setAccessible(true);
+
+$parsed_index = $parse_sitemap_xml->invoke($admin, $sitemap_index_xml);
+assert_equals(2, count($parsed_index['sitemap_urls']), 'Sitemap index parser should return child sitemap URLs');
+assert_equals(0, count($parsed_index['urls']), 'Sitemap index parser should not return page URLs');
+
+$parsed_urlset = $parse_sitemap_xml->invoke($admin, $urlset_xml);
+assert_equals(2, count($parsed_urlset['urls']), 'URL set parser should return page URLs');
+assert_equals(0, count($parsed_urlset['sitemap_urls']), 'URL set parser should not return child sitemap URLs');
+
 VeloServe_Plugin::deactivate();
 assert_equals(false, get_option('veloserve_status')['connected'], 'Deactivate should set connected=false');
 

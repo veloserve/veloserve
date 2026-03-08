@@ -15,6 +15,11 @@ class VeloServe_Admin
         add_action('admin_post_veloserve_purge_all', [$this, 'handle_purge_all']);
         add_action('admin_post_veloserve_admin_bar_purge_all', [$this, 'handle_admin_bar_purge_all']);
         add_action('admin_post_veloserve_test_cdn', [$this, 'handle_test_cdn']);
+        add_action('admin_post_veloserve_tools_db_optimize', [$this, 'handle_tools_db_optimize']);
+        add_action('admin_post_veloserve_tools_warm_sitemap', [$this, 'handle_tools_warm_sitemap']);
+        add_action('admin_post_veloserve_tools_export_settings', [$this, 'handle_tools_export_settings']);
+        add_action('admin_post_veloserve_tools_import_settings', [$this, 'handle_tools_import_settings']);
+        add_action('admin_post_veloserve_tools_download_debug', [$this, 'handle_tools_download_debug']);
         add_action('admin_bar_menu', [$this, 'add_admin_bar_nodes'], 90);
         add_action('admin_notices', [$this, 'render_notices']);
     }
@@ -181,6 +186,14 @@ class VeloServe_Admin
         if (!empty($_GET['veloserve_cdn_error'])) {
             printf('<div class="notice notice-error is-dismissible"><p>CDN error: %s</p></div>', esc_html(urldecode($_GET['veloserve_cdn_error'])));
         }
+
+        if (!empty($_GET['veloserve_tools_done'])) {
+            printf('<div class="notice notice-success is-dismissible"><p>Tools: %s</p></div>', esc_html(urldecode($_GET['veloserve_tools_done'])));
+        }
+
+        if (!empty($_GET['veloserve_tools_error'])) {
+            printf('<div class="notice notice-error is-dismissible"><p>Tools error: %s</p></div>', esc_html(urldecode($_GET['veloserve_tools_error'])));
+        }
     }
 
     public function add_admin_bar_nodes($wp_admin_bar)
@@ -267,6 +280,154 @@ class VeloServe_Admin
 
         check_admin_referer('veloserve_register_action');
         $this->perform_register();
+    }
+
+    public function handle_tools_db_optimize()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_tools_db_optimize_action', 'veloserve_tools_db_optimize_nonce');
+
+        $result = $this->perform_database_optimize();
+        if (is_wp_error($result)) {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode($result->get_error_message()), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $message = sprintf(
+            'Database optimize completed. Optimized %d/%d tables.',
+            isset($result['optimized']) ? (int) $result['optimized'] : 0,
+            isset($result['tables']) ? (int) $result['tables'] : 0
+        );
+        wp_safe_redirect(add_query_arg('veloserve_tools_done', rawurlencode($message), $this->admin_page_url('tools')));
+        exit;
+    }
+
+    public function handle_tools_warm_sitemap()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_tools_warm_sitemap_action', 'veloserve_tools_warm_sitemap_nonce');
+
+        $result = $this->perform_sitemap_warm();
+        if (is_wp_error($result)) {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode($result->get_error_message()), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $message = sprintf(
+            'Sitemap warm submitted. URLs discovered: %d, queued: %d.',
+            isset($result['discovered']) ? (int) $result['discovered'] : 0,
+            isset($result['queued']) ? (int) $result['queued'] : 0
+        );
+        wp_safe_redirect(add_query_arg('veloserve_tools_done', rawurlencode($message), $this->admin_page_url('tools')));
+        exit;
+    }
+
+    public function handle_tools_export_settings()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_tools_export_settings_action');
+
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $payload = [
+            'version' => defined('VELOSERVE_PLUGIN_VERSION') ? VELOSERVE_PLUGIN_VERSION : 'unknown',
+            'generated_at' => gmdate('c'),
+            'settings' => array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []),
+        ];
+
+        $filename = 'veloserve-settings-' . gmdate('Ymd-His') . '.json';
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo wp_json_encode($payload, JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    public function handle_tools_import_settings()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_tools_import_settings_action', 'veloserve_tools_import_settings_nonce');
+
+        if (empty($_FILES['veloserve_settings_file']) || !is_array($_FILES['veloserve_settings_file'])) {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode('No settings file uploaded.'), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $file = $_FILES['veloserve_settings_file'];
+        $tmp_name = isset($file['tmp_name']) ? (string) $file['tmp_name'] : '';
+        if ($tmp_name === '' || !is_uploaded_file($tmp_name)) {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode('Uploaded settings file is invalid.'), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $raw = file_get_contents($tmp_name);
+        if (!is_string($raw) || trim($raw) === '') {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode('Settings file is empty.'), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            wp_safe_redirect(add_query_arg('veloserve_tools_error', rawurlencode('Settings file is not valid JSON.'), $this->admin_page_url('tools')));
+            exit;
+        }
+
+        $import_data = isset($decoded['settings']) && is_array($decoded['settings']) ? $decoded['settings'] : $decoded;
+        $sanitized = $this->sanitize($import_data);
+        update_option(VELOSERVE_OPTION_KEY, $sanitized);
+
+        wp_safe_redirect(add_query_arg('veloserve_tools_done', rawurlencode('Settings imported successfully.'), $this->admin_page_url('tools')));
+        exit;
+    }
+
+    public function handle_tools_download_debug()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        check_admin_referer('veloserve_tools_download_debug_action');
+
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $settings = array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []);
+        $status = get_option(VELOSERVE_STATUS_KEY, VeloServe_Plugin::default_status());
+
+        $debug = [
+            'generated_at' => gmdate('c'),
+            'plugin_version' => defined('VELOSERVE_PLUGIN_VERSION') ? VELOSERVE_PLUGIN_VERSION : 'unknown',
+            'site' => [
+                'url' => home_url('/'),
+                'wp_version' => get_bloginfo('version'),
+                'php_version' => PHP_VERSION,
+            ],
+            'status' => $status,
+            'settings' => $settings,
+        ];
+
+        if (!empty($settings['endpoint_url']) && !empty($settings['api_token'])) {
+            $server = new VeloServe_Server();
+            $debug['server_detection'] = $server->detect_server($settings);
+            $debug['cache_stats'] = $server->get_cache_stats($settings);
+            $debug['cache_config'] = $server->get_cache_config($settings);
+        }
+
+        $filename = 'veloserve-debug-' . gmdate('Ymd-His') . '.json';
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo wp_json_encode($debug, JSON_PRETTY_PRINT);
+        exit;
     }
 
     public function render_page()
@@ -900,13 +1061,57 @@ class VeloServe_Admin
     {
         ?>
         <h2>Tools</h2>
-        <p>Quick access to operational actions and docs for support workflows.</p>
-        <ul>
-            <li><a href="<?php echo esc_url($this->admin_page_url('dashboard')); ?>">View system overview</a></li>
-            <li><a href="<?php echo esc_url($this->admin_page_url('connection')); ?>">Run site registration</a></li>
-            <li><a href="<?php echo esc_url($this->admin_page_url('cache')); ?>">Run cache purge</a></li>
-            <li><a href="<?php echo esc_url($this->admin_page_url('cdn')); ?>">Validate CDN configuration</a></li>
-        </ul>
+        <p>Operational toolbox for purge, database maintenance, sitemap warming, configuration transfer, and debug snapshots.</p>
+
+        <div class="veloserve-split">
+            <div class="veloserve-card">
+                <h3>Maintenance</h3>
+                <p>Run safe operational actions on demand.</p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom: 10px;">
+                    <?php wp_nonce_field('veloserve_purge_all_action', 'veloserve_purge_all_nonce'); ?>
+                    <input type="hidden" name="action" value="veloserve_purge_all" />
+                    <?php submit_button('Purge Cache Now', 'secondary', 'submit', false); ?>
+                </form>
+
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php wp_nonce_field('veloserve_tools_db_optimize_action', 'veloserve_tools_db_optimize_nonce'); ?>
+                    <input type="hidden" name="action" value="veloserve_tools_db_optimize" />
+                    <?php submit_button('Optimize Database Tables', 'secondary', 'submit', false); ?>
+                </form>
+            </div>
+
+            <div class="veloserve-card">
+                <h3>Sitemap Crawler Warming</h3>
+                <p>Crawl public sitemaps and submit discovered URLs to the VeloServe warm queue.</p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php wp_nonce_field('veloserve_tools_warm_sitemap_action', 'veloserve_tools_warm_sitemap_nonce'); ?>
+                    <input type="hidden" name="action" value="veloserve_tools_warm_sitemap" />
+                    <?php submit_button('Warm from Sitemap', 'secondary', 'submit', false); ?>
+                </form>
+            </div>
+        </div>
+
+        <div class="veloserve-split">
+            <div class="veloserve-card">
+                <h3>Import / Export</h3>
+                <p>Export settings for backup or import settings from another environment.</p>
+                <p>
+                    <a class="button button-secondary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=veloserve_tools_export_settings'), 'veloserve_tools_export_settings_action')); ?>">Export Settings</a>
+                </p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                    <?php wp_nonce_field('veloserve_tools_import_settings_action', 'veloserve_tools_import_settings_nonce'); ?>
+                    <input type="hidden" name="action" value="veloserve_tools_import_settings" />
+                    <input type="file" name="veloserve_settings_file" accept=".json,application/json" required />
+                    <?php submit_button('Import Settings', 'secondary', 'submit', false); ?>
+                </form>
+            </div>
+
+            <div class="veloserve-card">
+                <h3>Debug Bundle</h3>
+                <p>Download a JSON snapshot with plugin config, status, environment, and server diagnostics.</p>
+                <a class="button button-secondary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=veloserve_tools_download_debug'), 'veloserve_tools_download_debug_action')); ?>">Download Debug Snapshot</a>
+            </div>
+        </div>
         <?php
     }
 
@@ -1096,5 +1301,187 @@ class VeloServe_Admin
         }
 
         return [];
+    }
+
+    private function perform_database_optimize()
+    {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->prefix)) {
+            return new WP_Error('veloserve_tools_no_db', 'Database layer is not available.');
+        }
+
+        $tables = [];
+        if (method_exists($wpdb, 'get_col')) {
+            $like = esc_sql($wpdb->prefix) . '%';
+            $tables = $wpdb->get_col("SHOW TABLES LIKE '{$like}'");
+        }
+
+        if (!is_array($tables) || empty($tables)) {
+            return [
+                'tables' => 0,
+                'optimized' => 0,
+            ];
+        }
+
+        $optimized = 0;
+        foreach ($tables as $table) {
+            if (!is_string($table) || $table === '') {
+                continue;
+            }
+
+            $safe_table = preg_replace('/[^A-Za-z0-9_]/', '', $table);
+            if (!is_string($safe_table) || $safe_table === '') {
+                continue;
+            }
+
+            $result = $wpdb->query("OPTIMIZE TABLE `{$safe_table}`");
+            if ($result !== false) {
+                $optimized++;
+            }
+        }
+
+        return [
+            'tables' => count($tables),
+            'optimized' => $optimized,
+        ];
+    }
+
+    private function perform_sitemap_warm()
+    {
+        $settings = get_option(VELOSERVE_OPTION_KEY, VeloServe_Plugin::default_settings());
+        $settings = array_merge(VeloServe_Plugin::default_settings(), is_array($settings) ? $settings : []);
+
+        if (empty($settings['endpoint_url']) || empty($settings['api_token'])) {
+            return new WP_Error('veloserve_tools_missing_credentials', 'Endpoint URL and API token are required for sitemap warm.');
+        }
+
+        $seed_urls = [
+            home_url('/wp-sitemap.xml'),
+            home_url('/sitemap.xml'),
+            home_url('/sitemap_index.xml'),
+        ];
+
+        $crawl = $this->collect_sitemap_urls($seed_urls, 8, 1000);
+        if (is_wp_error($crawl)) {
+            return $crawl;
+        }
+
+        $discovered = isset($crawl['urls']) && is_array($crawl['urls']) ? $crawl['urls'] : [];
+        if (empty($discovered)) {
+            return new WP_Error('veloserve_tools_no_sitemap_urls', 'No URLs were discovered from sitemap endpoints.');
+        }
+
+        $server = new VeloServe_Server();
+        $warm = $server->warm_cache($settings, $discovered, 'wordpress-sitemap-crawler', 'sitemap');
+        if (is_wp_error($warm)) {
+            return $warm;
+        }
+
+        return [
+            'discovered' => count($discovered),
+            'queued' => isset($warm['queued']) ? (int) $warm['queued'] : 0,
+        ];
+    }
+
+    private function collect_sitemap_urls(array $seed_urls, $max_sitemaps = 8, $max_urls = 1000)
+    {
+        $pending = array_values(array_unique(array_filter(array_map('trim', $seed_urls))));
+        $visited_sitemaps = [];
+        $urls = [];
+
+        while (!empty($pending) && count($visited_sitemaps) < (int) $max_sitemaps && count($urls) < (int) $max_urls) {
+            $sitemap_url = array_shift($pending);
+            if (!is_string($sitemap_url) || $sitemap_url === '' || isset($visited_sitemaps[$sitemap_url])) {
+                continue;
+            }
+
+            $visited_sitemaps[$sitemap_url] = true;
+            $response = wp_remote_get($sitemap_url, ['timeout' => 8]);
+            if (is_wp_error($response)) {
+                continue;
+            }
+
+            $status = wp_remote_retrieve_response_code($response);
+            if ($status < 200 || $status >= 300) {
+                continue;
+            }
+
+            $body = wp_remote_retrieve_body($response);
+            if (!is_string($body) || trim($body) === '') {
+                continue;
+            }
+
+            $parsed = $this->parse_sitemap_xml($body);
+            if (!empty($parsed['sitemap_urls']) && is_array($parsed['sitemap_urls'])) {
+                foreach ($parsed['sitemap_urls'] as $child_sitemap) {
+                    if (!isset($visited_sitemaps[$child_sitemap])) {
+                        $pending[] = $child_sitemap;
+                    }
+                }
+            }
+
+            if (!empty($parsed['urls']) && is_array($parsed['urls'])) {
+                $urls = array_merge($urls, $parsed['urls']);
+                $urls = array_values(array_unique($urls));
+            }
+        }
+
+        return [
+            'urls' => array_slice($urls, 0, (int) $max_urls),
+            'visited_sitemaps' => array_keys($visited_sitemaps),
+        ];
+    }
+
+    private function parse_sitemap_xml($xml_body)
+    {
+        $xml_body = trim((string) $xml_body);
+        if ($xml_body === '') {
+            return ['urls' => [], 'sitemap_urls' => []];
+        }
+
+        $urls = [];
+        $sitemap_urls = [];
+
+        if (function_exists('simplexml_load_string')) {
+            $xml = simplexml_load_string($xml_body);
+            if ($xml instanceof SimpleXMLElement) {
+                $root_name = strtolower($xml->getName());
+                if ($root_name === 'urlset') {
+                    foreach ($xml->url as $entry) {
+                        $loc = isset($entry->loc) ? trim((string) $entry->loc) : '';
+                        if ($loc !== '') {
+                            $urls[] = esc_url_raw($loc);
+                        }
+                    }
+                } elseif ($root_name === 'sitemapindex') {
+                    foreach ($xml->sitemap as $entry) {
+                        $loc = isset($entry->loc) ? trim((string) $entry->loc) : '';
+                        if ($loc !== '') {
+                            $sitemap_urls[] = esc_url_raw($loc);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (empty($urls) && empty($sitemap_urls) && preg_match_all('/<loc>([^<]+)<\/loc>/i', $xml_body, $matches)) {
+            foreach ($matches[1] as $loc) {
+                $loc = esc_url_raw(trim((string) $loc));
+                if ($loc === '') {
+                    continue;
+                }
+
+                if (preg_match('/sitemap/i', $loc)) {
+                    $sitemap_urls[] = $loc;
+                } else {
+                    $urls[] = $loc;
+                }
+            }
+        }
+
+        return [
+            'urls' => array_values(array_unique($urls)),
+            'sitemap_urls' => array_values(array_unique($sitemap_urls)),
+        ];
     }
 }
