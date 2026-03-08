@@ -659,6 +659,9 @@ impl RequestHandler {
         if (method == Method::GET || method == Method::POST) && path == "/api/v1/cache/warm" {
             return self.api_cache_warm(req).await;
         }
+        if method == Method::POST && path == "/api/v1/wordpress/register" {
+            return self.api_wordpress_register(req).await;
+        }
         if method == Method::GET && path == "/api/v1/metrics" {
             return self.api_metrics();
         }
@@ -950,6 +953,36 @@ impl RequestHandler {
             "success": true,
             "outcome": outcome,
             "warming": self.warmer.stats_json()
+        }))
+    }
+
+    /// API: WordPress plugin site registration
+    async fn api_wordpress_register(
+        &self,
+        req: Request<hyper::body::Incoming>,
+    ) -> Result<Response<Full<Bytes>>> {
+        let body = req.into_body().collect().await?.to_bytes();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::json!({}));
+        let node_id = payload
+            .get("site_url")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                let mut hasher = DefaultHasher::new();
+                s.hash(&mut hasher);
+                format!("wp-{:016x}", hasher.finish())
+            })
+            .unwrap_or_else(|| "local".to_string());
+        let registered_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|d| {
+                chrono::DateTime::from_timestamp(d.as_secs() as i64, d.subsec_nanos())
+                    .map(|dt: chrono::DateTime<chrono::Utc>| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            })
+            .unwrap_or_else(|| "1970-01-01 00:00:00".to_string());
+        self.json_response(serde_json::json!({
+            "node_id": node_id,
+            "registered_at": registered_at
         }))
     }
 

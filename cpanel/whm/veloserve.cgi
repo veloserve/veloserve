@@ -8,6 +8,7 @@ use POSIX qw(strftime);
 
 my $VELOSERVE_BIN    = '/usr/local/bin/veloserve';
 my $VELOSERVE_CONFIG = '/etc/veloserve/veloserve.toml';
+my $API_TOKENS_FILE  = '/etc/veloserve/api-tokens.txt';
 my $SWAP_SCRIPT      = '/usr/local/veloserve/cpanel/import-apache-and-swap.sh';
 my $HOOKS_LOG        = '/var/log/veloserve/hooks.log';
 my $ERROR_LOG        = '/var/log/veloserve/error.log';
@@ -17,7 +18,8 @@ my $cgi = CGI->new;
 my $action = $cgi->param('action') || 'dashboard';
 
 if ($action =~ /^api_/) {
-    print $cgi->header('application/json');
+    print $cgi->header('-Content-Type' => 'application/json; charset=UTF-8');
+    open local *STDERR, '>', '/dev/null';
 } else {
     print $cgi->header('text/html');
 }
@@ -30,9 +32,14 @@ my %routes = (
     'cache'        => \&page_cache,
     'ssl'          => \&page_ssl,
     'config'       => \&page_config,
+    'settings'     => \&page_settings,
     'logs'         => \&page_logs,
     'about'        => \&page_about,
     'api_status'          => \&api_status,
+    'token_create'        => \&action_token_create,
+    'token_revoke'        => \&action_token_revoke,
+    'api_token_create'    => \&api_token_create,
+    'api_token_revoke'    => \&api_token_revoke,
     'api_start'           => \&api_start,
     'api_stop'            => \&api_stop,
     'api_restart'         => \&api_restart,
@@ -112,6 +119,52 @@ sub get_chkservd_status {
 sub read_config {
     open my $fh, '<', $VELOSERVE_CONFIG or return '';
     local $/; my $c = <$fh>; close $fh; return $c;
+}
+
+sub read_api_tokens {
+    return () unless -f $API_TOKENS_FILE;
+    open my $fh, '<', $API_TOKENS_FILE or return ();
+    my @tokens = grep { /^[a-fA-F0-9]{32,}$/ } map { chomp; $_ } <$fh>;
+    close $fh;
+    return @tokens;
+}
+
+sub write_api_tokens {
+    my (@tokens) = @_;
+    my $dir = $VELOSERVE_CONFIG; $dir =~ s{/[^/]+$}{};
+    system("mkdir -p '$dir' 2>/dev/null");
+    open my $fh, '>', $API_TOKENS_FILE or return 0;
+    for my $t (@tokens) {
+        print $fh $t, "\n" if $t && $t =~ /^[a-fA-F0-9]+$/;
+    }
+    close $fh;
+    sync_tokens_to_config(@tokens);
+    return 1;
+}
+
+sub sync_tokens_to_config {
+    my (@tokens) = @_;
+    my $config = read_config() || '';
+    my $api_block = "[api]\ntokens = " . (scalar(@tokens) ? "[\n" . join("", map { "  \"$_\",\n" } @tokens) . "]" : "[]") . "\n";
+    if ($config =~ /\[api\][^\n]*\n(?:tokens\s*=\s*\[[^\]]*\][^\n]*\n?)*/) {
+        $config =~ s/\[api\][^\n]*\n(?:tokens\s*=\s*\[[^\]]*\][^\n]*\n?)*/$api_block/;
+    } else {
+        $config =~ s/\s*\z/\n/ if $config ne '';
+        $config .= $api_block;
+    }
+    return unless -f $VELOSERVE_CONFIG;  # only update toml if config file already exists
+    my $ts = strftime('%Y%m%d%H%M%S', localtime);
+    system("cp -a '$VELOSERVE_CONFIG' '${VELOSERVE_CONFIG}.bak.${ts}' 2>/dev/null");
+    open my $fh, '>', $VELOSERVE_CONFIG or return;
+    print $fh $config;
+    close $fh;
+    system("systemctl reload veloserve 2>/dev/null || systemctl restart veloserve 2>/dev/null");
+}
+
+sub mask_token {
+    my ($t) = @_;
+    return '****' unless $t && length($t) >= 8;
+    return '****' . substr($t, -4);
 }
 
 sub parse_vhosts {
@@ -235,6 +288,7 @@ sub html_header {
         ['php',       'PHP'],
         ['cache',     'Cache'],
         ['ssl',       'SSL/TLS'],
+        ['settings',  'Settings'],
         ['config',    'Config'],
         ['logs',      'Logs'],
         ['about',     'About'],
@@ -354,6 +408,7 @@ sub page_dashboard {
 <div class="vs-card mt-6">
   <div class="vs-card-header">Quick Actions</div>
   <div class="vs-card-body vs-btn-group">
+    <a href="?action=settings" class="vs-btn vs-btn-outline">Settings (API Tokens)</a>
     <a href="?action=vhosts" class="vs-btn vs-btn-outline">Manage Virtual Hosts</a>
     <a href="?action=php" class="vs-btn vs-btn-outline">PHP Settings</a>
     <a href="?action=cache" class="vs-btn vs-btn-outline">Cache Management</a>
@@ -418,6 +473,73 @@ sub page_switch {
         <tr><td>6</td><td>Restart tailwatchd</td><td>-</td></tr>
       </tbody>
     </table>
+  </div>
+</div>
+};
+
+    html_footer();
+}
+
+
+###############################################################################
+# PAGE: SETTINGS (API Tokens for WordPress plugin)
+###############################################################################
+
+sub page_settings {
+    my ($new_token_override, $error_message) = @_;  # when creating token we pass it here to avoid redirect
+    my $new_token = defined $new_token_override ? $new_token_override : $cgi->param('new_token');
+    my @tokens = read_api_tokens();
+
+    html_header('Settings', 'settings');
+
+    my $token_rows = '';
+    for my $t (@tokens) {
+        my $masked = mask_token($t);
+        my $t_esc = html_escape($t);
+        $token_rows .= qq{<tr><td><code class="vs-token-mask" data-token="$t_esc">$masked</code></td><td><button type="button" class="vs-btn vs-btn-outline vs-btn-sm" onclick="VS.copyTokenFromRow(this)">Copy</button> <form method="post" action="?action=token_revoke" style="display:inline" onsubmit="return confirm('Revoke this token? WordPress sites using it will need a new token.');"><input type="hidden" name="token" value="$t_esc" /><button type="submit" class="vs-btn vs-btn-danger vs-btn-sm">Revoke</button></form></td></tr>};
+    }
+    $token_rows = '<tr><td colspan="2" class="text-muted">No API tokens yet. Create one below.</td></tr>' unless $token_rows;
+
+    my $new_token_block = '';
+    if ($new_token) {
+        $new_token = html_escape($new_token);
+        $new_token_block = qq{
+<div class="vs-alert vs-alert-success mt-4">
+  <strong>New token (copy now - it will not be shown again):</strong>
+  <div class="vs-token-display mt-2"><code id="vs-new-token">$new_token</code> <button type="button" class="vs-btn vs-btn-sm" onclick="VS.copyTokenEl('vs-new-token')">Copy</button></div>
+</div>};
+    }
+    my $error_block = '';
+    if ($error_message) {
+        my $err = html_escape($error_message);
+        $error_block = qq{<div class="vs-alert vs-alert-danger mb-4"><strong>Error:</strong> $err</div>};
+    }
+
+    print qq{
+<h1>Settings</h1>
+$error_block
+<div class="vs-card mt-6">
+  <div class="vs-card-header">API Tokens</div>
+  <div class="vs-card-body">
+    <p class="text-muted mb-4">Use these tokens in the <strong>VeloServe plugin</strong> (e.g. WordPress, Magento) under Connection / API Token. Each token allows a site to register and purge cache.</p>
+    <table class="vs-table mb-4">
+      <thead><tr><th>Token</th><th>Actions</th></tr></thead>
+      <tbody>$token_rows</tbody>
+    </table>
+    <button type="button" class="vs-btn vs-btn-primary" id="vs-create-token-btn" onclick="VS.createApiToken(this)">Create API token</button>
+    <div id="vs-new-token-block" class="vs-new-token-container">$new_token_block</div>
+  </div>
+</div>
+
+<div class="vs-card mt-6">
+  <div class="vs-card-header">How to use (e.g. WordPress)</div>
+  <div class="vs-card-body">
+    <ol class="vs-list-ol">
+      <li>Open <strong>wp-admin</strong> &rarr; <strong>VeloServe</strong> &rarr; <strong>Connection</strong></li>
+      <li>Set <strong>Endpoint URL</strong> to <code>http://127.0.0.1</code> (or your server IP if remote)</li>
+      <li>Paste the API token above into <strong>API Token</strong></li>
+      <li>Click <strong>Save Settings</strong> then <strong>Register Site with VeloServe</strong></li>
+    </ol>
   </div>
 </div>
 };
@@ -812,6 +934,50 @@ sub page_about {
 
 
 ###############################################################################
+# SETTINGS ACTIONS (redirect after POST)
+###############################################################################
+
+sub action_token_create {
+    my $err;
+    eval {
+        my $new = cmd("openssl rand -hex 32 2>/dev/null");
+        $new =~ s/\s+//g if defined $new;
+        $new = '' unless defined $new;
+        unless ($new && length($new) >= 32) {
+            $err = 'Could not generate token (openssl rand failed or not installed).';
+            return;
+        }
+        my @tokens = read_api_tokens();
+        push @tokens, $new;
+        unless (write_api_tokens(@tokens)) {
+            $err = 'Could not save token (check /etc/veloserve/ permissions).';
+            return;
+        }
+        page_settings($new, undef);
+        return;
+    };
+    if ($@ || $err) {
+        page_settings(undef, $err || $@ || 'Unknown error.');
+    }
+}
+
+sub redirect_to_settings {
+    my ($query) = @_;
+    my $base = $ENV{'SCRIPT_NAME'} || $ENV{'REQUEST_URI'} || '/cgi/veloserve/veloserve.cgi';
+    $base =~ s/\?.*//;
+    my $url = $base . '?action=settings' . ($query ? "&$query" : '');
+    print $cgi->redirect(-url => $url, -status => 302);
+}
+
+sub action_token_revoke {
+    my $token = $cgi->param('token') || '';
+    my @tokens = grep { $_ ne $token } read_api_tokens();
+    write_api_tokens(@tokens);
+    page_settings(undef, undef);
+}
+
+
+###############################################################################
 # API ENDPOINTS
 ###############################################################################
 
@@ -944,6 +1110,28 @@ sub api_php_switch {
 
     system("systemctl reload veloserve 2>/dev/null || systemctl restart veloserve 2>/dev/null");
     print encode_json({ success => 1, message => "Switched to EA-PHP $label ($binary)" });
+}
+
+sub api_token_create {
+    my $new = cmd("openssl rand -hex 32 2>/dev/null");
+    $new =~ s/\s+//g if defined $new;
+    $new = '' unless defined $new;
+    unless ($new && length($new) >= 32) {
+        print encode_json({ success => 0, message => 'Failed to generate token' });
+        exit 0;
+    }
+    my @tokens = read_api_tokens();
+    push @tokens, $new;
+    write_api_tokens(@tokens);
+    print encode_json({ success => 1, token => $new });
+    exit 0;
+}
+
+sub api_token_revoke {
+    my $token = $cgi->param('token') || '';
+    my @tokens = grep { $_ ne $token } read_api_tokens();
+    write_api_tokens(@tokens);
+    print encode_json({ success => 1, message => 'Token revoked' });
 }
 
 sub api_logs {

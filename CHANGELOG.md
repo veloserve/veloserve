@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.6 - 2026-03-08
+
+Fixes for WHM plugin visibility, API token creation, and WordPress plugin registration so Plugin + VeloServe work end-to-end on cPanel.
+
+### WHM plugin
+
+- Fixed plugin not showing in WHM sidebar: added `displayname=VeloServe` and `entryurl=veloserve/veloserve.cgi` to AppConfig so the plugin appears under Plugins and the link no longer 404s (no double `/cgi/` in URL).
+- Added **Settings** page with **API Tokens**: create/revoke tokens for the WordPress (and other) plugins; tokens stored in `/etc/veloserve/api-tokens.txt` and synced to `veloserve.toml` `[api] tokens`.
+- Token creation uses JSON API from the UI (POST with action in body) to avoid WHM redirect issues; copy token and use in WordPress Connection.
+- Fixed wording (generic "Create API token", no WordPress-only labels) and replaced em dash with hyphen to avoid encoding issues.
+
+### VeloServe server
+
+- Added **POST /api/v1/wordpress/register**: WordPress plugin "Register Site with VeloServe" now succeeds; returns `node_id` (from site URL hash) and `registered_at` (JSON 200). Fixes "Registration failed with status 404".
+
+### WordPress plugin
+
+- Endpoint discovery: auto-detect now tries **port 80** first (`http://127.0.0.1`, `http://localhost`) for cPanel/WHM, then port 8080 for standalone, so the plugin connects without "Connection refused" on cPanel.
+- Connection placeholder suggests `http://127.0.0.1 (cPanel)` vs `http://127.0.0.1:8080 (standalone)`.
+- Docs: clarified cPanel = port 80, standalone = 8080 for Endpoint URL.
+
+### Release note
+
+After merge, tag **v1.0.6** to trigger the Release workflow and publish binaries; users can then use the WordPress plugin with VeloServe on cPanel (WHM → Settings → API Tokens, then wp-admin → VeloServe → Connection).
+
+---
+
 ## 1.0.5 - 2026-03-08
 
 This release packages the completed WordPress plugin work from Phase 1 and Phase 2, along with the QA fixes and documentation updates that were finished on `feat/vel-18-wordpress-plugin-v1`.
