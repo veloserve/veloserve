@@ -962,7 +962,8 @@ impl RequestHandler {
         req: Request<hyper::body::Incoming>,
     ) -> Result<Response<Full<Bytes>>> {
         let body = req.into_body().collect().await?.to_bytes();
-        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::json!({}));
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).unwrap_or(serde_json::json!({}));
         let node_id = payload
             .get("site_url")
             .and_then(|v| v.as_str())
@@ -976,8 +977,9 @@ impl RequestHandler {
             .duration_since(UNIX_EPOCH)
             .ok()
             .and_then(|d| {
-                chrono::DateTime::from_timestamp(d.as_secs() as i64, d.subsec_nanos())
-                    .map(|dt: chrono::DateTime<chrono::Utc>| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                chrono::DateTime::from_timestamp(d.as_secs() as i64, d.subsec_nanos()).map(
+                    |dt: chrono::DateTime<chrono::Utc>| dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+                )
             })
             .unwrap_or_else(|| "1970-01-01 00:00:00".to_string());
         self.json_response(serde_json::json!({
