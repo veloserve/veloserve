@@ -130,6 +130,11 @@ function sanitize_email($value)
     return trim((string) $value);
 }
 
+function sanitize_textarea_field($value)
+{
+    return trim((string) $value);
+}
+
 function esc_url_raw($value)
 {
     return trim((string) $value);
@@ -200,6 +205,15 @@ assert_equals(1, $settings['notifications_enabled'], 'notifications_enabled defa
 assert_equals(0, $settings['cdn_enabled'], 'cdn_enabled default should be disabled');
 assert_equals('none', $settings['cdn_provider'], 'cdn_provider default should be none');
 assert_equals('', $settings['cloudflare_zone_id'], 'cloudflare_zone_id default should be empty');
+assert_equals(1, $settings['opt_minify_css'], 'opt_minify_css default should be enabled');
+assert_equals(0, $settings['opt_combine_css'], 'opt_combine_css default should be disabled');
+assert_equals(0, $settings['opt_critical_css'], 'opt_critical_css default should be disabled');
+assert_equals(1, $settings['opt_minify_js'], 'opt_minify_js default should be enabled');
+assert_equals(0, $settings['opt_combine_js'], 'opt_combine_js default should be disabled');
+assert_equals(1, $settings['opt_defer_js'], 'opt_defer_js default should be enabled');
+assert_equals(1, $settings['opt_minify_html'], 'opt_minify_html default should be enabled');
+assert_equals(0, $settings['opt_prefetch_hints'], 'opt_prefetch_hints default should be disabled');
+assert_equals('', $settings['opt_prefetch_urls'], 'opt_prefetch_urls default should be empty');
 assert_true(is_array($status), 'Activation should create status option');
 assert_equals(false, $status['connected'], 'connected should default to false');
 
@@ -212,6 +226,15 @@ $sanitized = $admin->sanitize([
     'server_ip_override' => '203.0.113.10',
     'notifications_enabled' => '1',
     'auto_purge' => '1',
+    'opt_minify_css' => '1',
+    'opt_combine_css' => '1',
+    'opt_critical_css' => '1',
+    'opt_minify_js' => '1',
+    'opt_combine_js' => '1',
+    'opt_defer_js' => '1',
+    'opt_minify_html' => '1',
+    'opt_prefetch_hints' => '1',
+    'opt_prefetch_urls' => " https://fonts.gstatic.com \nhttps://cdn.example.test/assets ",
     'cdn_enabled' => '1',
     'cdn_provider' => 'cloudflare',
     'cloudflare_zone_id' => 'zone-123',
@@ -226,6 +249,15 @@ assert_equals(1, $sanitized['guest_mode'], 'sanitize should persist guest_mode')
 assert_equals('203.0.113.10', $sanitized['server_ip_override'], 'sanitize should keep valid server_ip_override');
 assert_equals(1, $sanitized['notifications_enabled'], 'sanitize should persist notifications_enabled');
 assert_equals(1, $sanitized['auto_purge'], 'sanitize should persist auto_purge');
+assert_equals(1, $sanitized['opt_minify_css'], 'sanitize should persist opt_minify_css');
+assert_equals(1, $sanitized['opt_combine_css'], 'sanitize should persist opt_combine_css');
+assert_equals(1, $sanitized['opt_critical_css'], 'sanitize should persist opt_critical_css');
+assert_equals(1, $sanitized['opt_minify_js'], 'sanitize should persist opt_minify_js');
+assert_equals(1, $sanitized['opt_combine_js'], 'sanitize should persist opt_combine_js');
+assert_equals(1, $sanitized['opt_defer_js'], 'sanitize should persist opt_defer_js');
+assert_equals(1, $sanitized['opt_minify_html'], 'sanitize should persist opt_minify_html');
+assert_equals(1, $sanitized['opt_prefetch_hints'], 'sanitize should persist opt_prefetch_hints');
+assert_equals("https://fonts.gstatic.com\nhttps://cdn.example.test/assets", $sanitized['opt_prefetch_urls'], 'sanitize should normalize opt_prefetch_urls');
 assert_equals(1, $sanitized['cdn_enabled'], 'sanitize should persist cdn_enabled');
 assert_equals('cloudflare', $sanitized['cdn_provider'], 'sanitize should persist cdn_provider');
 assert_equals('zone-123', $sanitized['cloudflare_zone_id'], 'sanitize should persist cloudflare_zone_id');
@@ -246,6 +278,15 @@ update_option('veloserve_settings', [
     'guest_mode' => 0,
     'server_ip_override' => '',
     'notifications_enabled' => 1,
+    'opt_minify_css' => 1,
+    'opt_combine_css' => 0,
+    'opt_critical_css' => 0,
+    'opt_minify_js' => 1,
+    'opt_combine_js' => 0,
+    'opt_defer_js' => 1,
+    'opt_minify_html' => 1,
+    'opt_prefetch_hints' => 1,
+    'opt_prefetch_urls' => "https://fonts.gstatic.com\nhttps://cdn.example.test/assets",
     'cdn_enabled' => 0,
     'cdn_provider' => 'none',
     'cloudflare_zone_id' => '',
@@ -257,7 +298,12 @@ update_option('veloserve_settings', [
 $plugin = VeloServe_Plugin::instance();
 $plugin->bootstrap();
 
-$GLOBALS['http_mock'] = function ($url, $args) {
+$registration_payload = null;
+$GLOBALS['http_mock'] = function ($url, $args) use (&$registration_payload) {
+    if (strpos($url, '/api/v1/wordpress/register') !== false) {
+        $registration_payload = json_decode($args['body'], true);
+    }
+
     return [
         'response' => ['code' => 201],
         'body' => json_encode(['node_id' => 'node-123']),
@@ -268,6 +314,10 @@ $result = $plugin->register_with_endpoint();
 assert_true(!is_wp_error($result), 'Register should succeed on 2xx response');
 assert_equals('node-123', get_option('veloserve_status')['node_id'], 'Node id should persist on success');
 assert_equals(true, get_option('veloserve_status')['connected'], 'Connected should be true after success');
+assert_true(is_array($registration_payload), 'Register payload should be captured');
+assert_true(isset($registration_payload['optimization']), 'Register payload should include optimization settings');
+assert_equals(true, $registration_payload['optimization']['minify_css'], 'Register payload should include minify_css');
+assert_equals(true, $registration_payload['optimization']['defer_js'], 'Register payload should include defer_js');
 
 $GLOBALS['http_mock'] = function ($url, $args) {
     return [

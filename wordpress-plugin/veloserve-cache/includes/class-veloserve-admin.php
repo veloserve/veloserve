@@ -102,6 +102,22 @@ class VeloServe_Admin
         }
         $settings['purge_path'] = sanitize_text_field($purge_path);
 
+        $settings['opt_minify_css'] = !empty($input['opt_minify_css']) ? 1 : 0;
+        $settings['opt_combine_css'] = !empty($input['opt_combine_css']) ? 1 : 0;
+        $settings['opt_critical_css'] = !empty($input['opt_critical_css']) ? 1 : 0;
+        $settings['opt_minify_js'] = !empty($input['opt_minify_js']) ? 1 : 0;
+        $settings['opt_combine_js'] = !empty($input['opt_combine_js']) ? 1 : 0;
+        $settings['opt_defer_js'] = !empty($input['opt_defer_js']) ? 1 : 0;
+        $settings['opt_minify_html'] = !empty($input['opt_minify_html']) ? 1 : 0;
+        $settings['opt_prefetch_hints'] = !empty($input['opt_prefetch_hints']) ? 1 : 0;
+
+        $prefetch_urls = isset($input['opt_prefetch_urls']) ? trim((string) $input['opt_prefetch_urls']) : '';
+        if ($prefetch_urls !== '') {
+            $prefetch_urls = preg_replace('/\r\n|\r/', "\n", $prefetch_urls);
+            $prefetch_urls = implode("\n", array_filter(array_map('trim', explode("\n", (string) $prefetch_urls))));
+        }
+        $settings['opt_prefetch_urls'] = sanitize_textarea_field($prefetch_urls);
+
         $cdn_provider = isset($input['cdn_provider']) ? sanitize_key((string) $input['cdn_provider']) : 'none';
         if (!in_array($cdn_provider, ['none', 'cloudflare'], true)) {
             $cdn_provider = 'none';
@@ -730,6 +746,7 @@ class VeloServe_Admin
         <nav class="nav-tab-wrapper" aria-label="Cache Sections" style="margin-bottom: 16px;">
             <a class="<?php echo $cache_view === 'cache' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('cache')); ?>">Cache</a>
             <a class="<?php echo $cache_view === 'ttl' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('ttl')); ?>">TTL</a>
+            <a class="<?php echo $cache_view === 'optimization' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('optimization')); ?>">Optimization</a>
             <a class="<?php echo $cache_view === 'purge' ? 'nav-tab nav-tab-active' : 'nav-tab'; ?>" href="<?php echo esc_url($this->cache_tab_url('purge')); ?>">Purge</a>
         </nav>
 
@@ -767,6 +784,43 @@ class VeloServe_Admin
                     </tr>
                 </table>
                 <?php submit_button('Save TTL Settings'); ?>
+            </form>
+        <?php elseif ($cache_view === 'optimization'): ?>
+            <form method="post" action="options.php">
+                <?php settings_fields('veloserve_settings_group'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row">CSS Optimization</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_minify_css]" value="1" <?php checked((int) $settings['opt_minify_css'], 1); ?> /> Minify CSS assets</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_combine_css]" value="1" <?php checked((int) $settings['opt_combine_css'], 1); ?> /> Combine CSS files</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_critical_css]" value="1" <?php checked((int) $settings['opt_critical_css'], 1); ?> /> Generate and inline critical CSS</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">JavaScript Optimization</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_minify_js]" value="1" <?php checked((int) $settings['opt_minify_js'], 1); ?> /> Minify JavaScript assets</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_combine_js]" value="1" <?php checked((int) $settings['opt_combine_js'], 1); ?> /> Combine JavaScript files</label><br />
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_defer_js]" value="1" <?php checked((int) $settings['opt_defer_js'], 1); ?> /> Defer non-critical JavaScript</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">HTML Optimization</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_minify_html]" value="1" <?php checked((int) $settings['opt_minify_html'], 1); ?> /> Minify HTML output</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Prefetch Hints</th>
+                        <td>
+                            <label><input type="checkbox" name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_prefetch_hints]" value="1" <?php checked((int) $settings['opt_prefetch_hints'], 1); ?> /> Enable prefetch hints</label>
+                            <p class="description">Optional list of URLs/origins to prefetch (one per line).</p>
+                            <textarea name="<?php echo esc_attr(VELOSERVE_OPTION_KEY); ?>[opt_prefetch_urls]" rows="4" class="large-text code" placeholder="https://fonts.gstatic.com&#10;https://cdn.example.com"><?php echo esc_textarea((string) $settings['opt_prefetch_urls']); ?></textarea>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button('Save Optimization Settings'); ?>
             </form>
         <?php else: ?>
             <form method="post" action="options.php">
@@ -978,7 +1032,7 @@ class VeloServe_Admin
     private function active_cache_view()
     {
         $view = isset($_GET['cache_view']) ? sanitize_key(wp_unslash($_GET['cache_view'])) : 'cache';
-        return in_array($view, ['cache', 'ttl', 'purge'], true) ? $view : 'cache';
+        return in_array($view, ['cache', 'ttl', 'optimization', 'purge'], true) ? $view : 'cache';
     }
 
     private function cache_tab_url($view)
