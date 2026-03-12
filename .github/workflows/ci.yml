@@ -42,7 +42,7 @@ jobs:
               exit 0
             fi
 
-            mapfile -t rust_files < <(git diff --name-only "${{ github.event.before }}..${{ github.sha }}" | grep -E '\.rs$' || true)
+            mapfile -t rust_files < <(git diff --name-only --diff-filter=ACMRT "${{ github.event.before }}..${{ github.sha }}" | grep -E '\.rs$' || true)
             if [[ ${#rust_files[@]} -eq 0 ]]; then
               echo "No Rust files changed in this push."
               exit 0
