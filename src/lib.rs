@@ -26,6 +26,7 @@ pub mod cli;
 pub mod config;
 pub mod php;
 pub mod server;
+pub mod velopanel;
 
 pub use config::Config;
 pub use server::Server;
