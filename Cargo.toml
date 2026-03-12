@@ -26,6 +26,9 @@ tokio = { version = "1.35", features = ["full"] }
 hyper = { version = "1.1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
+axum = { version = "0.7", features = ["json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # HTTP/2 support
 h2 = "0.4"
@@ -39,6 +42,7 @@ rustls-pemfile = "2.0"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+jsonwebtoken = "9.3"
 
 # CLI
 clap = { version = "4.4", features = ["derive"] }
@@ -86,6 +90,10 @@ path = "src/main.rs"
 [[bin]]
 name = "vephp"
 path = "src/php_worker/main.rs"
+
+[[bin]]
+name = "velopanel"
+path = "src/bin/velopanel.rs"
 
 # [[bench]]
 # name = "server_bench"
