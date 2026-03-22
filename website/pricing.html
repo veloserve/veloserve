@@ -295,7 +295,7 @@
     <!-- Pricing Hero -->
     <section class="pricing-hero">
         <h1><span class="gradient-text">Simple</span> Pricing</h1>
-        <p>Start free. Scale when you need to. All plans include the full VeloServe server.</p>
+        <p>Start free with one domain. Upgrade to unlock unlimited domains, VeloPanel hosting control panel, and priority support.</p>
     </section>
 
     <!-- Pricing Cards -->
@@ -304,16 +304,18 @@
         <div class="plan-card">
             <div class="plan-name">Community</div>
             <div class="plan-price">Free</div>
-            <p class="plan-description">For personal projects and open-source developers.</p>
+            <p class="plan-description">For personal projects and single-site setups.</p>
             <ul class="plan-features">
-                <li>1 license key</li>
+                <li>1 domain</li>
+                <li>VeloServe web server (CGI + SAPI)</li>
+                <li>VeloPanel with basic features</li>
+                <li>SSL / Let's Encrypt</li>
+                <li>File manager &amp; databases</li>
                 <li>Community support (GitHub Issues)</li>
-                <li>Basic downloads</li>
-                <li>CGI + SAPI modes</li>
+                <li class="disabled">Multi-domain hosting</li>
+                <li class="disabled">Built-in WAF</li>
+                <li class="disabled">App &amp; service installers</li>
                 <li class="disabled">Priority support</li>
-                <li class="disabled">Server heartbeat monitoring</li>
-                <li class="disabled">Advanced analytics</li>
-                <li class="disabled">Migration assistance</li>
             </ul>
             <a href="https://platform.veloserve.io/login" class="plan-cta plan-cta-outline">Get Started Free</a>
         </div>
@@ -325,14 +327,16 @@
             <div class="plan-price">$9.99<span>/mo</span></div>
             <p class="plan-description">For growing teams and production workloads.</p>
             <ul class="plan-features">
-                <li>5 license keys</li>
-                <li>Priority email support</li>
-                <li>All downloads (pre-built binaries)</li>
-                <li>CGI + SAPI + cPanel modes</li>
+                <li>Up to 25 domains</li>
+                <li>VeloServe (CGI + SAPI + cPanel mode)</li>
+                <li>Full VeloPanel control panel</li>
+                <li>Built-in WAF &amp; firewall rules</li>
+                <li>App/service installer &amp; configurators</li>
+                <li>Email, FTP &amp; DNS management</li>
+                <li>Scheduled backups (S3/SFTP)</li>
                 <li>Server heartbeat monitoring</li>
-                <li>Dashboard analytics</li>
-                <li class="disabled">Dedicated support</li>
-                <li class="disabled">Migration assistance</li>
+                <li>Priority email support</li>
+                <li class="disabled">Unlimited domains</li>
             </ul>
             <a href="https://platform.veloserve.io/plan" class="plan-cta plan-cta-primary">Start Pro Trial</a>
         </div>
@@ -341,18 +345,53 @@
         <div class="plan-card">
             <div class="plan-name">Business</div>
             <div class="plan-price">$24.99<span>/mo</span></div>
-            <p class="plan-description">For agencies and enterprises with mission-critical sites.</p>
+            <p class="plan-description">For agencies and enterprises hosting multiple clients.</p>
             <ul class="plan-features">
-                <li>Unlimited license keys</li>
+                <li>Unlimited domains</li>
+                <li>Everything in Pro, plus:</li>
+                <li>White-label panel branding</li>
+                <li>Multi-server &amp; cluster support</li>
+                <li>Advanced analytics &amp; reporting</li>
                 <li>Dedicated support with SLA</li>
-                <li>All downloads (pre-built binaries)</li>
-                <li>CGI + SAPI + cPanel modes</li>
-                <li>Server heartbeat monitoring</li>
-                <li>Advanced analytics</li>
                 <li>Migration assistance (+$49 one-time)</li>
                 <li>Custom configuration review</li>
             </ul>
             <a href="https://platform.veloserve.io/plan" class="plan-cta plan-cta-outline">Start Business Trial</a>
+        </div>
+    </div>
+
+    <!-- VeloPanel Feature Highlight -->
+    <div class="comparison" style="padding-bottom: 60px;">
+        <h2>Included with Every Plan: <span class="gradient-text">VeloPanel</span></h2>
+        <p style="text-align: center; color: var(--text-secondary); max-width: 640px; margin: -20px auto 40px; font-size: 0.95rem;">A full-featured hosting control panel written in Rust. Manage your entire server from a modern web UI.</p>
+        <div class="pricing-grid" style="padding: 0;">
+            <div class="plan-card" style="padding: 28px 24px;">
+                <div class="plan-name" style="font-size: 1.1rem;">Security</div>
+                <ul class="plan-features" style="margin-bottom: 0;">
+                    <li>Built-in WAF (Pro+)</li>
+                    <li>Firewall &amp; IP blocking</li>
+                    <li>SSL / Let's Encrypt auto-renewal</li>
+                    <li>2FA &amp; SSH key management</li>
+                </ul>
+            </div>
+            <div class="plan-card" style="padding: 28px 24px;">
+                <div class="plan-name" style="font-size: 1.1rem;">Management</div>
+                <ul class="plan-features" style="margin-bottom: 0;">
+                    <li>Domain, DNS &amp; email management</li>
+                    <li>File manager with editor</li>
+                    <li>MySQL, MariaDB &amp; PostgreSQL</li>
+                    <li>PHP multi-version switching</li>
+                </ul>
+            </div>
+            <div class="plan-card" style="padding: 28px 24px;">
+                <div class="plan-name" style="font-size: 1.1rem;">Automation</div>
+                <ul class="plan-features" style="margin-bottom: 0;">
+                    <li>App &amp; service installers (Pro+)</li>
+                    <li>Scheduled backups to S3/SFTP</li>
+                    <li>Cron job scheduler</li>
+                    <li>System monitoring dashboard</li>
+                </ul>
+            </div>
         </div>
     </div>
 
@@ -370,10 +409,22 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>License Keys</td>
+                    <td>Domains</td>
                     <td>1</td>
-                    <td>5</td>
+                    <td>Up to 25</td>
                     <td>Unlimited</td>
+                </tr>
+                <tr>
+                    <td>Hosting Accounts</td>
+                    <td>1</td>
+                    <td>Up to 10</td>
+                    <td>Unlimited</td>
+                </tr>
+                <tr>
+                    <td>VeloPanel Control Panel</td>
+                    <td>Basic</td>
+                    <td>Full</td>
+                    <td>Full + White-label</td>
                 </tr>
                 <tr>
                     <td>Server Modes</td>
@@ -382,7 +433,25 @@
                     <td>CGI, SAPI, cPanel</td>
                 </tr>
                 <tr>
-                    <td>Pre-built Binaries</td>
+                    <td>Built-in WAF</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>App/Service Installers</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Email &amp; FTP Management</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Scheduled Backups (S3/SFTP)</td>
                     <td class="dash">&mdash;</td>
                     <td class="check">&#10003;</td>
                     <td class="check">&#10003;</td>
@@ -394,13 +463,13 @@
                     <td class="check">&#10003;</td>
                 </tr>
                 <tr>
-                    <td>Dashboard Analytics</td>
+                    <td>Multi-server / Cluster</td>
                     <td class="dash">&mdash;</td>
-                    <td class="check">&#10003;</td>
+                    <td class="dash">&mdash;</td>
                     <td class="check">&#10003;</td>
                 </tr>
                 <tr>
-                    <td>Advanced Analytics</td>
+                    <td>White-label Branding</td>
                     <td class="dash">&mdash;</td>
                     <td class="dash">&mdash;</td>
                     <td class="check">&#10003;</td>
@@ -423,12 +492,6 @@
                     <td class="dash">&mdash;</td>
                     <td>+$49 one-time</td>
                 </tr>
-                <tr>
-                    <td>Config Review</td>
-                    <td class="dash">&mdash;</td>
-                    <td class="dash">&mdash;</td>
-                    <td class="check">&#10003;</td>
-                </tr>
             </tbody>
         </table>
     </div>
@@ -438,19 +501,23 @@
         <h2>Frequently Asked Questions</h2>
         <div class="faq-item">
             <h3>Is VeloServe itself free?</h3>
-            <p>Yes. VeloServe is open-source under the MIT license. The paid plans cover platform features like license management, priority support, pre-built binaries, and monitoring.</p>
+            <p>Yes. VeloServe is open-source under the MIT license. The paid plans cover VeloPanel features, multi-domain hosting, priority support, and monitoring.</p>
+        </div>
+        <div class="faq-item">
+            <h3>What is VeloPanel?</h3>
+            <p>VeloPanel is a full-featured web hosting control panel built in Rust. It includes domain management, SSL provisioning, a built-in WAF, file manager, database management, email/FTP/DNS, app installers, scheduled backups, and system monitoring &mdash; all from a modern web UI.</p>
         </div>
         <div class="faq-item">
             <h3>Can I switch plans later?</h3>
             <p>Absolutely. Upgrade or downgrade at any time from your platform dashboard. Changes take effect on your next billing cycle.</p>
         </div>
         <div class="faq-item">
-            <h3>What does migration assistance include?</h3>
-            <p>Our team helps you migrate from nginx/Apache + PHP-FPM to VeloServe SAPI. We review your configuration, test your applications, and ensure zero-downtime deployment.</p>
+            <h3>What's included in the free Community plan?</h3>
+            <p>You get VeloServe, VeloPanel with basic features (file manager, databases, SSL), and hosting for a single domain. To add more domains or unlock the WAF, app installers, email management, and backups, upgrade to Pro.</p>
         </div>
         <div class="faq-item">
-            <h3>Do I need a license key to use VeloServe?</h3>
-            <p>No. You can build from source and run VeloServe without any license. License keys unlock platform features like heartbeat monitoring and support tickets.</p>
+            <h3>What does migration assistance include?</h3>
+            <p>Our team helps you migrate from nginx/Apache + PHP-FPM to VeloServe SAPI. We review your configuration, test your applications, and ensure zero-downtime deployment.</p>
         </div>
     </div>
 
