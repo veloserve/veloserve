@@ -74,9 +74,11 @@ impl ResolvesServerCert for VeloServeCertResolver {
 pub fn build_tls_config(config: &Config) -> Result<ServerConfig, Box<dyn std::error::Error>> {
     let resolver = VeloServeCertResolver::from_config(config)?;
 
-    let tls_config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_cert_resolver(Arc::new(resolver));
+    let tls_config =
+        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()?
+            .with_no_client_auth()
+            .with_cert_resolver(Arc::new(resolver));
 
     Ok(tls_config)
 }
