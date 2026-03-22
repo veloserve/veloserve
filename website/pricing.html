@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - VeloServe</title>
+    <meta name="description" content="VeloServe pricing plans. Free community tier, Pro for teams, and Business for enterprises.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .pricing-hero {
+            padding: 140px 0 60px;
+            text-align: center;
+        }
+        .pricing-hero h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+        }
+        .pricing-hero p {
+            color: var(--text-secondary);
+            font-size: 1.15rem;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            max-width: 1060px;
+            margin: 0 auto;
+            padding: 0 24px 80px;
+        }
+        .plan-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 32px;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .plan-card:hover {
+            border-color: var(--border-light);
+            transform: translateY(-4px);
+        }
+        .plan-card.recommended {
+            border-color: var(--accent);
+            box-shadow: 0 0 30px var(--accent-glow);
+            position: relative;
+        }
+        .plan-badge {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent);
+            color: white;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .plan-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .plan-price {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .plan-price span {
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+        .plan-description {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+        .plan-features {
+            list-style: none;
+            margin-bottom: 32px;
+            flex: 1;
+        }
+        .plan-features li {
+            padding: 8px 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .plan-features li::before {
+            content: '';
+            width: 18px;
+            height: 18px;
+            background: var(--success);
+            mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/contain no-repeat;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/contain no-repeat;
+            flex-shrink: 0;
+        }
+        .plan-features li.disabled {
+            color: var(--text-muted);
+            opacity: 0.5;
+        }
+        .plan-features li.disabled::before {
+            background: var(--text-muted);
+            mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+        }
+        .plan-cta {
+            display: block;
+            text-align: center;
+            padding: 14px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .plan-cta-primary {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+        .plan-cta-primary:hover {
+            background: var(--accent-light);
+            transform: translateY(-2px);
+        }
+        .plan-cta-outline {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        .plan-cta-outline:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Comparison table */
+        .comparison {
+            max-width: 1060px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        .comparison h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .comparison-table th,
+        .comparison-table td {
+            padding: 14px 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .comparison-table th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-card);
+        }
+        .comparison-table th:first-child {
+            border-radius: 8px 0 0 0;
+        }
+        .comparison-table th:last-child {
+            border-radius: 0 8px 0 0;
+        }
+        .comparison-table td:first-child {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .comparison-table td {
+            color: var(--text-secondary);
+            text-align: center;
+        }
+        .comparison-table td:first-child {
+            text-align: left;
+        }
+        .check {
+            color: var(--success);
+            font-weight: 700;
+        }
+        .dash {
+            color: var(--text-muted);
+            opacity: 0.4;
+        }
+
+        /* FAQ */
+        .faq {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 0 24px 100px;
+        }
+        .faq h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .faq-item {
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+        }
+        .faq-item h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .faq-item p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .pricing-grid {
+                grid-template-columns: 1fr;
+                max-width: 420px;
+            }
+            .pricing-hero h1 {
+                font-size: 2rem;
+            }
+            .comparison-table {
+                font-size: 0.8rem;
+            }
+            .comparison-table th,
+            .comparison-table td {
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <img src="logo.svg" alt="VeloServe" class="logo-img">
+                <span class="logo-text">VeloServe</span>
+            </a>
+            <div class="nav-links">
+                <a href="/#features">Features</a>
+                <a href="/#performance">Performance</a>
+                <a href="/#install">Install</a>
+                <a href="/#downloads">Downloads</a>
+                <a href="https://docs.veloserve.io" class="nav-link">Docs</a>
+                <a href="/pricing" class="nav-link" style="color: var(--accent)">Pricing</a>
+                <a href="https://platform.veloserve.io/login" class="nav-login">Login</a>
+                <a href="https://github.com/veloserve/veloserve" class="nav-github" target="_blank">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    GitHub
+                </a>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                    <svg class="sun-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="moon-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Pricing Hero -->
+    <section class="pricing-hero">
+        <h1><span class="gradient-text">Simple</span> Pricing</h1>
+        <p>Start free. Scale when you need to. All plans include the full VeloServe server.</p>
+    </section>
+
+    <!-- Pricing Cards -->
+    <div class="pricing-grid">
+        <!-- Community -->
+        <div class="plan-card">
+            <div class="plan-name">Community</div>
+            <div class="plan-price">Free</div>
+            <p class="plan-description">For personal projects and open-source developers.</p>
+            <ul class="plan-features">
+                <li>1 license key</li>
+                <li>Community support (GitHub Issues)</li>
+                <li>Basic downloads</li>
+                <li>CGI + SAPI modes</li>
+                <li class="disabled">Priority support</li>
+                <li class="disabled">Server heartbeat monitoring</li>
+                <li class="disabled">Advanced analytics</li>
+                <li class="disabled">Migration assistance</li>
+            </ul>
+            <a href="https://platform.veloserve.io/login" class="plan-cta plan-cta-outline">Get Started Free</a>
+        </div>
+
+        <!-- Pro -->
+        <div class="plan-card recommended">
+            <span class="plan-badge">Most Popular</span>
+            <div class="plan-name">Pro</div>
+            <div class="plan-price">$9.99<span>/mo</span></div>
+            <p class="plan-description">For growing teams and production workloads.</p>
+            <ul class="plan-features">
+                <li>5 license keys</li>
+                <li>Priority email support</li>
+                <li>All downloads (pre-built binaries)</li>
+                <li>CGI + SAPI + cPanel modes</li>
+                <li>Server heartbeat monitoring</li>
+                <li>Dashboard analytics</li>
+                <li class="disabled">Dedicated support</li>
+                <li class="disabled">Migration assistance</li>
+            </ul>
+            <a href="https://platform.veloserve.io/plan" class="plan-cta plan-cta-primary">Start Pro Trial</a>
+        </div>
+
+        <!-- Business -->
+        <div class="plan-card">
+            <div class="plan-name">Business</div>
+            <div class="plan-price">$24.99<span>/mo</span></div>
+            <p class="plan-description">For agencies and enterprises with mission-critical sites.</p>
+            <ul class="plan-features">
+                <li>Unlimited license keys</li>
+                <li>Dedicated support with SLA</li>
+                <li>All downloads (pre-built binaries)</li>
+                <li>CGI + SAPI + cPanel modes</li>
+                <li>Server heartbeat monitoring</li>
+                <li>Advanced analytics</li>
+                <li>Migration assistance (+$49 one-time)</li>
+                <li>Custom configuration review</li>
+            </ul>
+            <a href="https://platform.veloserve.io/plan" class="plan-cta plan-cta-outline">Start Business Trial</a>
+        </div>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="comparison">
+        <h2>Plan Comparison</h2>
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Community</th>
+                    <th>Pro</th>
+                    <th>Business</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>License Keys</td>
+                    <td>1</td>
+                    <td>5</td>
+                    <td>Unlimited</td>
+                </tr>
+                <tr>
+                    <td>Server Modes</td>
+                    <td>CGI, SAPI</td>
+                    <td>CGI, SAPI, cPanel</td>
+                    <td>CGI, SAPI, cPanel</td>
+                </tr>
+                <tr>
+                    <td>Pre-built Binaries</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Server Heartbeat</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Dashboard Analytics</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Advanced Analytics</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Support</td>
+                    <td>Community</td>
+                    <td>Priority Email</td>
+                    <td>Dedicated + SLA</td>
+                </tr>
+                <tr>
+                    <td>Support Tickets</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+                <tr>
+                    <td>Migration Assistance</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="dash">&mdash;</td>
+                    <td>+$49 one-time</td>
+                </tr>
+                <tr>
+                    <td>Config Review</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="check">&#10003;</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- FAQ -->
+    <div class="faq">
+        <h2>Frequently Asked Questions</h2>
+        <div class="faq-item">
+            <h3>Is VeloServe itself free?</h3>
+            <p>Yes. VeloServe is open-source under the MIT license. The paid plans cover platform features like license management, priority support, pre-built binaries, and monitoring.</p>
+        </div>
+        <div class="faq-item">
+            <h3>Can I switch plans later?</h3>
+            <p>Absolutely. Upgrade or downgrade at any time from your platform dashboard. Changes take effect on your next billing cycle.</p>
+        </div>
+        <div class="faq-item">
+            <h3>What does migration assistance include?</h3>
+            <p>Our team helps you migrate from nginx/Apache + PHP-FPM to VeloServe SAPI. We review your configuration, test your applications, and ensure zero-downtime deployment.</p>
+        </div>
+        <div class="faq-item">
+            <h3>Do I need a license key to use VeloServe?</h3>
+            <p>No. You can build from source and run VeloServe without any license. License keys unlock platform features like heartbeat monitoring and support tickets.</p>
+        </div>
+    </div>
+
+    <!-- CTA -->
+    <section class="cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Serve at Light Speed?</h2>
+                <p>Get started with the free Community plan or upgrade for production features.</p>
+                <div class="cta-buttons">
+                    <a href="https://platform.veloserve.io/login" class="btn btn-primary">
+                        Create Free Account
+                    </a>
+                    <a href="/" class="btn btn-outline">
+                        Back to Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+            <div class="footer-brand">
+                <img src="logo.svg" alt="VeloServe" class="footer-logo">
+                <span class="logo-text">VeloServe</span>
+            </div>
+                <div class="footer-links">
+                    <a href="https://docs.veloserve.io">Documentation</a>
+                    <a href="/pricing">Pricing</a>
+                    <a href="https://platform.veloserve.io/login">Platform</a>
+                    <a href="https://github.com/veloserve/veloserve">GitHub</a>
+                    <a href="https://github.com/veloserve/veloserve/issues">Issues</a>
+                    <a href="https://github.com/veloserve/veloserve/blob/main/LICENSE">MIT License</a>
+                </div>
+                <div class="footer-copy">
+                    Built with Rust and care
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
