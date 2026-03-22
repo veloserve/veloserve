@@ -1,7 +1,7 @@
 {
   "outputDirectory": "website",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/pricing", "destination": "/pricing.html" }
   ],
   "redirects": [
     { "source": "/github", "destination": "https://github.com/veloserve/veloserve", "permanent": true },
