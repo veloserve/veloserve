@@ -155,6 +155,21 @@ a {
     color: var(--accent);
 }
 
+.nav-login {
+    background: var(--accent);
+    color: white !important;
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.nav-login:hover {
+    background: var(--accent-light);
+    transform: translateY(-1px);
+}
+
 .nav-github {
     display: flex;
     align-items: center;
